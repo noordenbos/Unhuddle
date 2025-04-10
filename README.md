@@ -1,8 +1,11 @@
+<h2>
+  UNHUDDLE
+  <img src="assets/images/logo.png" alt="logo" width="90" align="left"/>
+</h2>
 
-## UNHUDDLE
 **Uncovering Neighborhood Heterogeneity Using Deterministic Normalization and Local Equilibrium**
 
-UNHUDDLE is an algorithm designed to resolve signal in densely packed tissue regions — or "cell huddles" — in multiplex spatial proteomics, where traditional absolute segmentation introduces 'neighbor noise' and blur the phenotypic signal.
+<br>UNHUDDLE is an algorithm designed to resolve signal in densely packed tissue regions — or "cell huddles" — in multiplex spatial proteomics, where traditional absolute segmentation introduces 'neighbor noise' and blur the phenotypic signal.
 
 On the cell to cell borderpixels, shared signal is observed due to 1 resolution issues, 2 lateral bleed and 3 z-projection. Unhuddle knows the cell's neighbors, measures their mean intensity and reallocates the bordersignal to the rightful owner. 
 
