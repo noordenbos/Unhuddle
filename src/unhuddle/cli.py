@@ -45,7 +45,7 @@ def main():
     parser.add_argument("--create_deepcell_mask", action="store_true", default=False,
                         help="Run DeepCell web overlay + segmentation")
 
-    parser.add_argument("--geckodriver_path", type=str, default="geckodriver", help="Path to geckodriver binary")
+    parser.add_argument("--geckodriver_path", type=str, default=None, help="Path to geckodriver binary")
     parser.add_argument("--deepcell_url", type=str, default="http://www.deepcell.org", help="DeepCell website URL")
 
     parser.add_argument("--nuclear_markers", nargs="+", default=None,
