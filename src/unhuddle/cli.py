@@ -243,7 +243,7 @@ def main():
         # ✅ Show outputs if anything succeeded
         print(
             "📁 Processed FOV folders have updated masks and overlays — check the pseudocolored mask renders for validation.")
-        print(f"📄 Unhuddle normalized output (partial): {dirs['unhuddle_norm']}")
+        print(f"📄 Unhuddle normalized output: {dirs['unhuddle_norm']}")
         print(f"📄 Cell-level morphology metrics: {dirs['morph']}")
         print(f"📄 Raw/pre-normalization values: {out}\n")
 
