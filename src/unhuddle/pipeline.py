@@ -77,7 +77,7 @@ def process_fov_pipeline(
                     # Save to result (optional: keep full repr(e))
                     result["deepcell_processing"] = f"Error: {short_msg}"
                     return result
-        else:
+            else:
                 logger.warning(
                     f"⚠️ Overlay file not created for {os.path.basename(fov_path)} — skipping FOV"
                 )
