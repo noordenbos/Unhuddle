@@ -376,11 +376,18 @@ def run_qc_from_memory(args, adata):
 
     # Step 2: Optional t-SNE coords
     tsne_available = False
-    if os.path.exists(tsne_dir) and os.listdir(tsne_dir):
+    if "X_tsne" in adata.obsm:
+        logger.info("✅ Found preloaded t-SNE coordinates in adata.obsm['X_tsne']")
+        tsne_available = True
+    elif "X_external_dr" in adata.obsm:
+        adata.obsm["X_tsne"] = adata.obsm["X_external_dr"]
+        logger.info("🔄 Using external DR coords as t-SNE input (copied to adata.obsm['X_tsne'])")
+        tsne_available = True
+    elif os.path.exists(tsne_dir) and os.listdir(tsne_dir):
         adata = load_dimension_reduction_coords(tsne_dir, adata, args.coord_cols)
         tsne_available = True
     else:
-        logger.warning("⚠️ Skipping t-SNE-based filtering (no coords found)")
+        logger.warning("⚠️ No dimension reduction coordinates found. Skipping t-SNE-based filtering.")
 
     # Step 3: Init status
     adata.obs["filtering_status"] = "Unfiltered"

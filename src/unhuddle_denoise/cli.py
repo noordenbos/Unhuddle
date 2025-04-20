@@ -53,6 +53,8 @@ def main():
     if args.membrane_markers_overlay is None:
         args.membrane_markers_overlay = args.normalisation_markers
     logger.info(f"Using membrane_markers_overlay: {args.membrane_markers_overlay}")
+    if args.fitsne and args.add_dimensionreduction_coords:
+        raise ValueError("Cannot use both --fitsne and --add_dimensionreduction_coords. Choose one.")
 
     if args.use_denoised:
         logger.info("⚙️ Percentile normalization enabled — cohort-level ExclMem_Sum data will be fetched before FOV loop.")

@@ -140,6 +140,11 @@ def parse_arguments() -> argparse.Namespace:
                         help="Run dimension reduction using fitSNE and receive QC filtering")
     parser.add_argument("--no_qc", action="store_true", help="Avoid QC filtering on finalized AnnData object.")
     parser.add_argument("--low_intensity_threshold", type=int, default=10, help="Minimum total intensity over all marker to accept cell")
+    parser.add_argument("--add_dimensionreduction_coords", type=str, default=None,
+                        help="Path to folder with {fov}.csv files having 3 columns: label, dr_1, dr_2")
+    parser.add_argument("--coord_cols", nargs=2, type=str, default=["dr_1", "dr_2"],
+                        help="Names of the coordinate columns in the CSVs (default: dr_1 dr_2)")
+
     return parser.parse_args()
 
 def save_cli_call(output_base_path, filename="cli_call.txt"):
@@ -368,7 +373,43 @@ def create_adata(args: argparse.Namespace) -> None:
     if args.no_qc:
         print("⚠️ Skipping QC (user passed --no_qc)")
         return
+    # ── Optionally add external DR coordinates ───────────────────────────────────────
+    if args.add_dimensionreduction_coords:
+        logging.info(f"Loading external DR coordinates from: {args.add_dimensionreduction_coords}")
+        all_coords = []
 
+        for fov in adata.obs["fov"].unique():
+            fov_csv = os.path.join(args.add_dimensionreduction_coords, f"{fov}.csv")
+            if not os.path.exists(fov_csv):
+                logging.warning(f"Skipping missing DR file: {fov_csv}")
+                continue
+
+            df = pd.read_csv(fov_csv)
+            if df.shape[1] < 3:
+                raise ValueError(f"Expected 3 columns in {fov_csv}, got: {df.columns.tolist()}")
+
+            # Force rename
+            df.columns = ["label"] + args.coord_cols
+            df["cell_id"] = df["label"].astype(str).apply(lambda x: f"{fov}_{x}")
+            df = df.set_index("cell_id")
+
+            # Align to AnnData index
+            valid_cells = adata.obs.index.intersection(df.index)
+            missing = set(df.index) - set(valid_cells)
+            if missing:
+                logging.warning(f"{fov}: {len(missing)} unmatched DR coordinates")
+
+            all_coords.append(df.loc[valid_cells, args.coord_cols])
+
+        # Combine all FOVs
+        combined_coords = pd.concat(all_coords)
+        coords_array = combined_coords.reindex(adata.obs.index).to_numpy()
+
+        # Save into obsm
+        adata.obsm["X_external_dr"] = coords_array
+        logging.info("Stored external DR coordinates in adata.obsm['X_external_dr']")
+
+        return adata
     run_qc_pipeline(args, adata)
 
 
