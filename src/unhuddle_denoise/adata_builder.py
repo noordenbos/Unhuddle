@@ -1,4 +1,3 @@
-# src/unhuddle/adata.py
 import os
 import glob
 import numpy as np
@@ -8,12 +7,9 @@ import concurrent.futures
 from tqdm import tqdm
 from anndata import AnnData, concat
 from tifffile import imread
-
-
 import logging
+
 logger = logging.getLogger(__name__)
-
-
 warnings.filterwarnings("ignore", message=".*converted to numpy array with dtype.*")
 
 def build_adata_from_outputs(output_base_path, working_path=None, output_adata_name="adata1.h5ad", max_workers=16):
@@ -51,7 +47,18 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
         df[numeric] = df[numeric].replace([np.inf, -np.inf], np.nan).fillna(0).astype(float)
         return df
 
-    def process_fov(fov):
+    fovs = get_fov_list()
+    all_obs = []
+    all_X = []
+    all_layers = {
+        "sum_unhuddle": [],
+        "sum_original": [],
+        "sum_unhuddle_denoised": [],
+        "ExclMem_Sum": []
+    }
+    all_obsm_spatial = []
+
+    for fov in tqdm(fovs, desc="Constructing AnnData"):
         paths = {
             "intensity": f"{output_base_path}/unhuddle_normalized/{fov}.csv",
             "sum": f"{output_base_path}/unhuddle_sum/{fov}.csv",
@@ -59,97 +66,86 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
             "morph": f"{output_base_path}/morphology_features/{fov}.csv",
             "denoised_intensity": f"{output_base_path}/unhuddle_denoised_normalized/{fov}.csv",
             "denoised_sum": f"{output_base_path}/unhuddle_denoised_sum/{fov}.csv",
+            "protein": f"{output_base_path}/protein_features/{fov}.csv",
         }
         if not all(os.path.exists(paths[k]) for k in ["intensity", "sum", "orig_sum", "morph"]):
-            return None
+            continue
 
-        # Load and preprocess
         intensity = convert_numeric(load_df(paths["intensity"], fov))
         sum_unhuddle = convert_numeric(load_df(paths["sum"], fov))
         sum_orig = convert_numeric(load_df(paths["orig_sum"], fov))
         morph = convert_numeric(load_df(paths["morph"], fov))
-        denoised_intensity = None
-        denoised_sum = None
-        if os.path.exists(paths["denoised_intensity"]):
-            denoised_intensity = convert_numeric(load_df(paths["denoised_intensity"], fov))
-        if os.path.exists(paths["denoised_sum"]):
-            denoised_sum = convert_numeric(load_df(paths["denoised_sum"], fov))
+        denoised_intensity = convert_numeric(load_df(paths["denoised_intensity"], fov)) if os.path.exists(paths["denoised_intensity"]) else None
+        denoised_sum = convert_numeric(load_df(paths["denoised_sum"], fov)) if os.path.exists(paths["denoised_sum"]) else None
+        protein_df = convert_numeric(load_df(paths["protein"], fov)) if os.path.exists(paths["protein"]) else None
 
-        for df in [intensity, sum_unhuddle, sum_orig, morph, denoised_intensity, denoised_sum]:
-            df.set_index("cell_id", inplace=True)
+        for df in [intensity, sum_unhuddle, sum_orig, morph, denoised_intensity, denoised_sum, protein_df]:
+            if df is not None:
+                df.set_index("cell_id", inplace=True)
 
-        # Morph QC
         if all(col in morph.columns for col in ["Nucleus_Area", "Nucleus_Centroid_Row"]):
             morph["QC_no_nucleus"] = morph[["Nucleus_Area", "Nucleus_Centroid_Row"]].isna().any(axis=1)
 
         morph["fov"] = fov
         morph["patient_id"] = fov.split("_")[0] if "_" in fov else fov
 
-        # Build obsm
-        obsm = {}
-        if "Centroid_Row" in morph and "Centroid_Col" in morph:
-            obsm["spatial"] = morph[["Centroid_Row", "Centroid_Col"]].values
-        if "Nucleus_Centroid_Row" in morph and "Nucleus_Centroid_Col" in morph:
-            obsm["nuclear_spatial"] = morph[["Nucleus_Centroid_Row", "Nucleus_Centroid_Col"]].values
+        spatial_coords = morph[["Centroid_Row", "Centroid_Col"]].values if "Centroid_Row" in morph and "Centroid_Col" in morph else None
+        all_obsm_spatial.append(spatial_coords)
 
-        # Final cleanup
-        morph.drop(columns=["FOV", "Label", "Centroid_Row", "Centroid_Col",
-                            "Nucleus_Centroid_Row", "Nucleus_Centroid_Col"], errors="ignore", inplace=True)
-        intensity.drop(columns=["Label"], errors="ignore", inplace=True)
+        morph.drop(columns=["FOV", "Label", "Centroid_Row", "Centroid_Col", "Nucleus_Centroid_Row", "Nucleus_Centroid_Col"], errors="ignore", inplace=True)
+        all_obs.append(morph)
 
-        # Decide what goes into .X
         if denoised_intensity is not None:
-            denoised_arr = denoised_intensity.drop(columns=["Label"], errors="ignore").values
-            adata = AnnData(X=denoised_arr, obs=morph, obsm=obsm)
-            adata.uns["X_source"] = "normalized_unhuddle_denoised"
+            X = denoised_intensity.drop(columns=["Label"], errors="ignore")
+            X_source = "normalized_unhuddle_denoised"
         else:
-            adata = AnnData(X=norm_unhuddle, obs=morph, obsm=obsm)
-            adata.uns["X_source"] = "normalized_unhuddle"
+            X = intensity.drop(columns=["Label"], errors="ignore")
+            X_source = "normalized_unhuddle"
 
-        # Store the summed layers only
-        sum_unhuddle_arr = sum_unhuddle.drop(columns=["Label"], errors="ignore").values
-        adata.layers["sum_unhuddle"] = sum_unhuddle_arr
-        sum_orig_arr = sum_orig.drop(columns=["Label"], errors="ignore").values
-        adata.layers["sum_original"] = sum_orig_arr
+        all_X.append(X.values)
 
+        all_layers["sum_unhuddle"].append(sum_unhuddle.drop(columns=["Label"], errors="ignore").values)
+        all_layers["sum_original"].append(sum_orig.drop(columns=["Label"], errors="ignore").values)
         if denoised_sum is not None:
-            adata.layers["sum_unhuddle_denoised"] = denoised_sum.drop(columns=["Label"], errors="ignore").values
+            all_layers["sum_unhuddle_denoised"].append(denoised_sum.drop(columns=["Label"], errors="ignore").values)
 
-        # Convenience summary stat
-        adata.obs["summed_intensity"] = adata.layers["sum_unhuddle"].sum(axis=1)
+        if protein_df is not None:
+            exclmem_cols = [col for col in protein_df.columns if col.endswith("_ExclusionMembrane_Sum_Intensity")]
+            if exclmem_cols:
+                markers = [col.replace("_ExclusionMembrane_Sum_Intensity", "") for col in exclmem_cols]
+                all_layers["ExclMem_Sum"].append(protein_df[exclmem_cols].values)
+                var_names = markers
+                logger.info(f"✅ Reconstructed layer 'ExclMem_Sum' from protein_features for FOV: {fov}")
+            else:
+                logger.warning(f"⚠️ No ExclusionMembrane_Sum_Intensity columns found in protein_features for FOV: {fov}")
 
-        return adata
+    adata = AnnData(
+        X=np.vstack(all_X),
+        obs=pd.concat(all_obs),
+        var=pd.DataFrame(index=var_names),
+        obsm={"spatial": np.vstack(all_obsm_spatial)}
+    )
+    for key, arrays in all_layers.items():
+        if arrays:
+            adata.layers[key] = np.vstack(arrays)
 
-    fovs = get_fov_list()
-    adatas = []
-    for fov in tqdm(fovs, desc="Constructing AnnData"):
-        adata = process_fov(fov)
-        if adata is not None:
-            adatas.append(adata)
-
-    adatas = [a for a in adatas if a is not None]
-    if not adatas:
-        print("[ERROR] No valid FOVs found for AnnData.")
-        return
-
-    adata = concat(adatas, join="outer")
+    adata.obs["summed_intensity"] = adata.layers["sum_unhuddle"].sum(axis=1)
+    adata.uns["X_source"] = X_source
     adata.uns["fov-list"] = sorted(adata.obs["fov"].unique().tolist())
     adata.uns["patient_id-list"] = sorted(adata.obs["patient_id"].unique().tolist())
     adata.uns["marker-list"] = list(adata.var_names)
 
-    # Load and attach segmentation masks
     adata.uns["spatial"] = {}
     for fov in fovs:
         mask_path = os.path.join(working_path, fov, "deepcel_mask.tiff")
         if os.path.exists(mask_path):
             adata.uns["spatial"][fov] = {"segmentation": imread(mask_path)}
-    # Dimension reduction
-    fitsne_path = os.path.join(output_base_path, "fitsne_coords", f"{fov}.csv")
+
+    fitsne_path = os.path.join(output_base_path, "fitsne_coords", f"{fovs[0]}.csv")
     if os.path.exists(fitsne_path):
         coords = pd.read_csv(fitsne_path).values
-        adata.obsm["X_fitsne"] = coords  # or store per-FOV temporarily and merge later
+        adata.obsm["X_fitsne"] = coords
 
     adata.write_h5ad(adata_output_path)
     print(f"AnnData saved to: {adata_output_path}\n\n")
     return adata
-

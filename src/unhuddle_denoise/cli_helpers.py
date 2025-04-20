@@ -338,14 +338,7 @@ def build_reallocation_args(fov: str, dirs: dict, args: argparse.Namespace):
         args.log_level
     )
 
-
-
-
-def create_adata(args: argparse.Namespace) -> None:
-    """
-    Create a unified AnnData object from processed outputs.
-    """
-    logging.info("\n📦 Creating unified AnnData object...")
+def maybe_build_adata(args):
     from unhuddle_denoise.adata_builder import build_adata_from_outputs
     try:
         adata = build_adata_from_outputs(
@@ -354,11 +347,30 @@ def create_adata(args: argparse.Namespace) -> None:
             output_adata_name="adata1.h5ad",
             max_workers=1
         )
+        if adata is None:
+            logging.error("❌ AnnData creation returned None.")
+            return None
         return adata
     except Exception as e:
-        logging.error(f"❌ AnnData creation failed: {e}")
-        print(f"[ERROR] AnnData creation failed: {e}\n")
+        logging.exception("❌ Exception during AnnData creation.")
         return None
+
+
+
+def create_adata(args: argparse.Namespace) -> None:
+    logging.info("\n📦 Creating unified AnnData object...")
+    adata = maybe_build_adata(args)
+
+    if adata is None:
+        print("❌ AnnData creation failed. Skipping QC.")
+        return
+
+    if args.no_qc:
+        print("⚠️ Skipping QC (user passed --no_qc)")
+        return
+
+    run_qc_pipeline(args, adata)
+
 
 
 def fitsne(args):
@@ -380,8 +392,36 @@ def fitsne(args):
 
 
 def run_qc_pipeline(args, adata):
-    from unhuddle_denoise.qc_pipeline import run_qc_from_memory
+    def log_pre_qc_adata_summary(adata, name="Pre-QC"):
+        import numpy as np
+        logger = logging.getLogger("unhuddle")
+        logger.info(f"🧬 Inspecting AnnData ({name})...")
 
+        logger.info(f" - Total cells: {adata.n_obs}")
+        logger.info(f" - Total markers: {adata.n_vars}")
+        logger.info(f" - FOVs: {adata.obs['fov'].unique().tolist()}")
+
+        if "sum_unhuddle" in adata.layers:
+            intensity_sums = adata.layers["sum_unhuddle"].sum(axis=1).A1 if hasattr(adata.layers["sum_unhuddle"],
+                                                                                    "A1") else adata.layers[
+                "sum_unhuddle"].sum(axis=1)
+            logger.info(
+                f" - Intensity range across all cells: {np.min(intensity_sums):.4f} to {np.max(intensity_sums):.4f}")
+            logger.info(f" - Cells with sum == 0: {(intensity_sums == 0).sum()}")
+
+        if "spatial" in adata.obsm:
+            coords = adata.obsm["spatial"]
+            logger.info(
+                f" - Spatial range: x=[{coords[:, 0].min():.1f}, {coords[:, 0].max():.1f}], y=[{coords[:, 1].min():.1f}, {coords[:, 1].max():.1f}]")
+        else:
+            logger.warning("⚠️ adata.obsm['spatial'] is missing.")
+
+        missing_layers = [l for l in ["sum_unhuddle", "ExclMem_Sum"] if l not in adata.layers]
+        if missing_layers:
+            logger.warning(f"⚠️ Missing layers: {missing_layers}")
+
+    log_pre_qc_adata_summary(adata, name="before QC")
+    from unhuddle_denoise.qc_pipeline import run_qc_from_memory
     print("🚀 Running QC filtering pipeline ...")
     run_qc_from_memory(args, adata)  # Correct in-memory call
 

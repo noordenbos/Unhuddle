@@ -63,16 +63,15 @@ def main():
 
     if not fov_folders:
         print("❌ No FOVs selected for processing.")
+        if not args.create_adata:
+            return
 
-        if args.create_adata:
-            proceed = input("⚠️ No FOVs found. Do you still want to run only AnnData creation? (y/n): ").strip().lower()
-            if proceed == "y":
-                create_adata(args)
-            else:
-                print("🚫 Aborted AnnData creation.")
-            return
+        proceed = input("⚠️ No FOVs found. Do you still want to run only AnnData creation? (y/n): ").strip().lower()
+        if proceed == "y":
+            create_adata(args)
         else:
-            return
+            print("🚫 Aborted AnnData creation.")
+        return
 
     # Save CLI call for traceability
     cli_path = save_cli_call(args.output_base_path)
@@ -125,18 +124,9 @@ def main():
 
     # Optional: build AnnData
     if args.create_adata:
-        adata = create_adata(args)
-
-        if adata is None:
-            print("❌ AnnData creation failed. Skipping QC.")
-            return
-
-        if args.no_qc:
-            print("⚠️ Skipping QC (user passed --no_qc)")
-            return
+        create_adata(args)
 
 
-        run_qc_pipeline(args, adata)
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import logging
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from sklearn.linear_model import LinearRegression
-from scipy.stats import gaussian_kde
+from collections import defaultdict
 from PIL import Image
 import logging
 logger = logging.getLogger(__name__)
@@ -70,89 +70,67 @@ def compute_density_map(segmentation_mask, filtered_cells, window_size=50, strid
     return density_map
 
 def perform_density_filtering(
-        adata,
-        qc_output_dir: str,
-        density_dir: str,
-        density_threshold_quantile: float = 0.01,
-        density_key: str = "local_density"
+    adata,
+    qc_output_dir,
+    density_dir,
+    window_size=50,
+    stride=10,
+    density_threshold=550,
+    region_threshold=0.8,
+    density_scale=(0, 800)
 ):
     """
-    Computes per-cell 2D spatial density using Gaussian KDE and filters out sparse cells.
-
-    Parameters:
-    ----------
-    adata : AnnData
-        Spatial AnnData object with 'X', 'Y' in .obs or .obsm.
-    qc_output_dir : str
-        Folder where QC plots will be saved as a PDF.
-    density_dir : str
-        Folder to write per-FOV density CSVs.
-    density_threshold_quantile : float
-        Cells below this density quantile will be removed.
-    density_key : str
-        Key under which to store density values in adata.obs.
-
-    Returns:
-    --------
-    filtered_adata : AnnData
-        AnnData with low-density cells removed.
-    region_cells_by_fov : dict
-        Dict mapping FOVs to retained cell indices (obs_names).
+    Loop over each FOV to compute density maps based on segmentation masks in adata.uns and
+    update a flag for each cell if the fraction of pixels in a high-density region exceeds region_threshold.
     """
-    os.makedirs(density_dir, exist_ok=True)
-    os.makedirs(qc_output_dir, exist_ok=True)
-    pdf_path = os.path.join(qc_output_dir, "density_filtering_qc.pdf")
+    filtered_cells_li = set(adata.obs.index[adata.obs["QC_low_intensity_filter"]])
+    fovs = list(set(adata.obs["fov"]))
     region_cells_by_fov = {}
-    logger = logging.getLogger("unhuddle")
+    adata.obs["QC_filter_low_quality_region"] = False
 
-    with PdfPages(pdf_path) as pdf:
-        for fov in adata.obs["fov"].unique():
-            adata_fov = adata[adata.obs["fov"] == fov]
-            coords = adata_fov.obsm["spatial"] if "spatial" in adata_fov.obsm else adata_fov.obs[["X", "Y"]].values.T
+    for fov in fovs:
+        logger.info(f"Processing density filter for FOV: {fov}")
+        spatial_dict = adata.uns.get("spatial", {}).get(fov, {})
+        if "segmentation" not in spatial_dict:
+            logger.warning(f"⚠️ Skipping {fov} – No segmentation mask found.")
+            continue
+        segmentation_mask = spatial_dict["segmentation"]
+        fov_cells = adata.obs.index[adata.obs["fov"] == fov]
+        fov_filtered_cells = {cell for cell in filtered_cells_li if cell.startswith(f"{fov}_")}
+        density_map = compute_density_map(segmentation_mask, fov_filtered_cells,
+                                          window_size=window_size, stride=stride)
 
-            if coords.shape[1] < 10:
-                logger.warning(f"⚠️ FOV {fov} skipped (too few cells)")
-                continue
+        plt.figure(figsize=(10, 10))
+        plt.imshow(density_map, cmap='hot', interpolation='nearest', vmin=density_scale[0], vmax=density_scale[1])
+        plt.axis('off')
+        density_path = os.path.join(density_dir, f"{fov}.png")
+        plt.savefig(density_path, dpi=300, bbox_inches='tight', pad_inches=0)
+        plt.close()
+        logger.info(f"Saved density map for {fov} to: {density_path}")
 
-            kde = gaussian_kde(coords)
-            density = kde(coords)
-            adata.obs.loc[adata_fov.obs_names, density_key] = density
+        region_mask = density_map > density_threshold
+        if region_mask.shape != segmentation_mask.shape:
+            region_mask = resize(region_mask.astype(float), segmentation_mask.shape, anti_aliasing=True) > 0.5
 
-            # Store raw density map
-            df_out = pd.DataFrame({
-                "cell_id": adata_fov.obs_names,
-                "density": density
-            })
-            df_out.to_csv(os.path.join(density_dir, f"{fov}_density.csv"), index=False)
+        cell_pixel_counts = defaultdict(int)
+        cell_region_counts = defaultdict(int)
+        height, width = segmentation_mask.shape
+        for y in range(height):
+            for x in range(width):
+                cell_id_num = segmentation_mask[y, x]
+                if cell_id_num == 0:
+                    continue
+                cell_pixel_counts[cell_id_num] += 1
+                if region_mask[y, x]:
+                    cell_region_counts[cell_id_num] += 1
 
-            # Determine threshold
-            threshold = np.quantile(density, density_threshold_quantile)
-            keep_mask = density >= threshold
-            region_cells_by_fov[fov] = adata_fov.obs_names[keep_mask]
+        region_cells = {f"{fov}_{cid}" for cid, count in cell_region_counts.items()
+                        if (count / cell_pixel_counts[cid] > region_threshold)}
+        region_cells_by_fov[fov] = region_cells
+        adata.obs.loc[fov_cells, "QC_filter_low_quality_region"] = False
+        adata.obs.loc[list(region_cells), "QC_filter_low_quality_region"] = True
 
-            # QC plot
-            fig, ax = plt.subplots(figsize=(5, 5))
-            ax.set_title(f"FOV {fov} – Density Filter")
-            ax.scatter(
-                coords[0, :], coords[1, :],
-                c=density, cmap="viridis", s=5, alpha=0.8
-            )
-            ax.axhline(np.median(coords[1, :]), color='grey', ls='--', lw=0.5)
-            ax.axvline(np.median(coords[0, :]), color='grey', ls='--', lw=0.5)
-            ax.set_xlabel("X")
-            ax.set_ylabel("Y")
-            plt.colorbar(ax.collections[0], ax=ax, label="Density")
-            pdf.savefig(fig, bbox_inches="tight")
-            plt.close(fig)
-
-            logger.info(f"✅ FOV {fov}: kept {keep_mask.sum()} / {len(density)} cells")
-
-    # Global filter application
-    kept_cells = [cell for fov_cells in region_cells_by_fov.values() for cell in fov_cells]
-    adata_filtered = adata[kept_cells].copy()
-
-    logger.info(f"🧼 Density filtering complete: retained {adata_filtered.n_obs} / {adata.n_obs} cells total")
-    return adata_filtered, region_cells_by_fov
+    return adata, region_cells_by_fov
 
 def perform_tsne_filtering(adata, radius):
     x = adata.obsm["X_tsne"][:, 0]
