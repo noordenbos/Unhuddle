@@ -204,7 +204,7 @@ def generate_summary_tables(adata, qc_dir):
 
 def run_qc_from_memory(args, adata):
     qc_dir,dens,seg,sb=create_directories(args.output_base_path)
-    logger.info('🚀 Running QC pipeline')
+    logger.debug('🚀 Running QC pipeline')
     logger.info(f'🔧 Low-intensity threshold={args.low_intensity_threshold}')
     logger.info(f'🔧 Density window={args.qc_window_size},stride={args.qc_stride}')
     logger.info(f'🔧 Density thresh={args.qc_density_threshold},region={args.qc_region_threshold}')
@@ -217,7 +217,7 @@ def run_qc_from_memory(args, adata):
     low_count=int((adata.obs['QC_low_intensity_filter']).sum())
 
     # density
-    logger.info('🔍 Density QC')
+    logger.debug('🔍 Density QC')
     adata,region_map=perform_density_filtering(
         adata,qc_dir,dens,
         window_size=args.qc_window_size,stride=args.qc_stride,

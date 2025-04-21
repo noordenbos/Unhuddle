@@ -147,7 +147,7 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
         X=np.vstack(all_X),
         obs=pd.concat(all_obs),
         var=pd.DataFrame(index=var_names),
-        obsm={"spatial": np.vstack(all_obsm_spatial)}
+        obsm={"X_spatial": np.vstack(all_obsm_spatial)}
     )
     for key, arrays in all_layers.items():
         if arrays:

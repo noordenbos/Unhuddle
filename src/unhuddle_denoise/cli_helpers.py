@@ -520,12 +520,12 @@ def run_qc_pipeline(args, adata):
                 f" - Intensity range across all cells: {np.min(intensity_sums):.4f} to {np.max(intensity_sums):.4f}")
             logger.info(f" - Cells with sum == 0: {(intensity_sums == 0).sum()}")
 
-        if "spatial" in adata.obsm:
-            coords = adata.obsm["spatial"]
+        if "X_spatial" in adata.obsm:
+            coords = adata.obsm["X_spatial"]
             logger.info(
                 f" - Spatial range: x=[{coords[:, 0].min():.1f}, {coords[:, 0].max():.1f}], y=[{coords[:, 1].min():.1f}, {coords[:, 1].max():.1f}]")
         else:
-            logger.warning("⚠️ adata.obsm['spatial'] is missing.")
+            logger.warning("⚠️ adata.obsm['X_spatial'] is missing.")
 
         missing_layers = [l for l in ["sum_unhuddle", "ExclMem_Sum"] if l not in adata.layers]
         if missing_layers:
