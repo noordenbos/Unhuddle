@@ -135,7 +135,7 @@ def generate_segmentation_images(adata, fovs, density_dir, segmentation_dir, reg
         low = set(adata.obs.query("fov==@fov and QC_low_intensity_filter").index)
         reg = region_map.get(fov, set())
         drf = set(adata.obs.query("fov==@fov and QC_dr_based_filter").index)
-        img = np.full((H,W,3), 255, np.uint8)
+        img = np.zeros((H, W, 3), dtype=np.uint8)  # RGB = (0, 0, 0)
         for y in range(H):
             for x in range(W):
                 lab=seg[y,x]
