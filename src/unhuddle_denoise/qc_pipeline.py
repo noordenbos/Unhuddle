@@ -393,7 +393,16 @@ def run_qc_from_memory(args, adata):
     adata.obs["filtering_status"] = "Unfiltered"
 
     # Step 4: Density filtering (return full AnnData, flag cells for removal)
-    adata, region_cells_by_fov = perform_density_filtering(adata, qc_output_dir, density_dir)
+    adata, region_cells_by_fov = perform_density_filtering(
+        adata,
+        qc_output_dir,
+        density_dir,
+        window_size=args.qc_window_size,
+        stride=args.qc_stride,
+        density_threshold=args.qc_density_threshold,
+        region_threshold=args.qc_region_threshold,
+        density_scale=tuple(args.qc_density_scale),
+    )
 
     # Mark "bad" cells as low-density if not in region_cells_by_fov
     all_good_cells = set().union(*region_cells_by_fov.values())
@@ -401,7 +410,7 @@ def run_qc_from_memory(args, adata):
 
     # Step 5: Optional t-SNE filtering
     if tsne_available:
-        adata = perform_tsne_filtering(adata, args.radius)
+        adata = perform_tsne_filtering(adata, args.radius_DRfilter)
 
     # Step 6: Label filtering status
     adata.obs.loc[adata.obs["QC_filter_low_quality_region"], "filtering_status"] = "low quality region"

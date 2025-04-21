@@ -142,11 +142,26 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--fitsne", action="store_true",
                         help="Run dimension reduction using fitSNE and receive QC filtering")
     parser.add_argument("--no_qc", action="store_true", help="Avoid QC filtering on finalized AnnData object.")
-    parser.add_argument("--low_intensity_threshold", type=int, default=10, help="Minimum total intensity over all marker to accept cell")
     parser.add_argument("--add_dimensionreduction_coords", type=str, default=None,
                         help="Path to folder with {fov}.csv files having 3 columns: label, dr_1, dr_2")
     parser.add_argument("--coord_cols", nargs=2, type=str, default=["dr_1", "dr_2"],
                         help="Names of the coordinate columns in the CSVs (default: dr_1 dr_2)")
+    parser.add_argument("--low_intensity_threshold", type=int, default=10,
+                        help="Minimum total intensity to retain a cell (default: 10)")
+    parser.add_argument("--qc_density_threshold", type=int, default=550,
+                        help="Threshold for density map filtering (default: 550)")
+    parser.add_argument("--plot_density_scale", type=int, nargs=2, default=[0, 800],
+                        help="Value range for density map visualization (default: 0 800)")
+    parser.add_argument("--radius_DRfilter", type=float, default=15.0,
+                        help="Neighborhood radius for dimension reduction based filtering (default: 15.0)")
+
+    #silent:
+    parser.add_argument("--qc_region_threshold", type=float, default=0.8,
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--qc_window_size", type=int, default=50,
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--qc_stride", type=int, default=10,
+                        help=argparse.SUPPRESS)
 
     return parser.parse_args()
 
