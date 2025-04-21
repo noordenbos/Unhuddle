@@ -141,10 +141,10 @@ def perform_tsne_filtering(adata, radius):
         return adata
     pts = np.asarray(coords)
 
-    # Prefilter mask
-    mask = adata.obs["filtering_status"] != "Unfiltered"
+    # Prefilter mask (use QC flags, not filtering_status)
+    mask = adata.obs.get("QC_low_intensity_filter", False) | adata.obs.get("QC_filter_low_quality_region", False)
     num_prefilter = int(mask.sum())
-    logger.debug(f"🧪 t-SNE filtering with BallTree: total={pts.shape[0]} pts, filtered mask sum={num_prefilter}")
+    logger.debug(f"🔍 Prefilter mask sum (intensity or region): {num_prefilter}")(f"🧪 t-SNE filtering with BallTree: total={pts.shape[0]} pts, filtered mask sum={num_prefilter}")
 
     # Build BallTrees
     tree_all = BallTree(pts)
@@ -295,8 +295,7 @@ def perform_tsne_filtering(adata, radius):
     pts = np.column_stack((x_vals, y_vals))
     neighbors_total = tree_all.query_ball_point(pts, r=radius)
     neighbors_filtered = tree_filtered.query_ball_point(pts, r=radius)
-    logger.debug(
-        f"📡 Queried {len(neighbors_total)} neighborhoods for total and {len(neighbors_filtered)} for filtered.")
+    logger.debug(f"📡 Queried {len(neighbors_total)} neighborhoods for total and {len(neighbors_filtered)} for filtered.")
 
     count_total = np.array([len(n) for n in neighbors_total], dtype=int)
     count_filtered = np.array([len(n) for n in neighbors_filtered], dtype=int)
