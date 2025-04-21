@@ -131,14 +131,62 @@ def perform_density_filtering(
 
 def perform_tsne_filtering(adata, radius):
     """
-    Perform t-SNE based neighborhood filtering (serial implementation with debug).
+    Perform t-SNE based neighborhood filtering matching segmentation logic.
     """
     from scipy.spatial import cKDTree
-    # Extract coordinates
+    # Extract t-SNE coordinates
     coords = adata.obsm.get("X_tsne")
     if coords is None:
         logger.error("❌ Missing X_tsne in obsm; skipping t-SNE filtering.")
         return adata
+    x = coords[:, 0]
+    y = coords[:, 1]
+    logger.debug(f"🧪 t-SNE filtering on {len(x)} cells with radius={radius}")
+
+    # Identify cells surviving intensity and density QC (filtering_status == 'Unfiltered')
+    good_mask = adata.obs["filtering_status"] == "Unfiltered"
+    num_good = int(good_mask.sum())
+    logger.debug(f"🔍 {num_good} cells remain unfiltered and will seed neighborhood counts")
+
+    # Build KD-trees
+    pts = np.column_stack((x, y))
+    tree_all = cKDTree(pts)
+    pts_good = pts[good_mask.values]
+    if len(pts_good) == 0:
+        logger.warning("⚠️ No unfiltered cells to build KD-tree for t-SNE filtering.")
+        adata.obs["QC_fraction_filtered"] = 0.0
+        adata.obs["QC_tsne_based_filter"] = False
+        return adata
+    tree_good = cKDTree(pts_good)
+    logger.debug("🌲 KD-trees built (all vs. good cells)")
+
+    # Query neighbor counts
+    neighbors_total = tree_all.query_ball_point(pts, r=radius)
+    count_total = np.array([len(n) for n in neighbors_total], dtype=int)
+    neighbors_good = tree_good.query_ball_point(pts, r=radius)
+    count_good = np.array([len(n) for n in neighbors_good], dtype=int)
+    logger.debug(f"🔢 Example counts (total, good): {list(zip(count_total[:5], count_good[:5]))}")
+
+    # Compute fraction of good neighbors
+    fraction = np.zeros_like(count_total, dtype=float)
+    valid = count_total > 0
+    fraction[valid] = count_good[valid] / count_total[valid]
+    adata.obs["QC_fraction_filtered"] = fraction
+    logger.debug(f"📊 QC_fraction_filtered stats: min={fraction.min():.4f}, max={fraction.max():.4f}")
+
+    # Flag as bad if too many neighbors were filtered (>75% filtered => good fraction < 0.25)
+    tsne_thresh = 0.25
+    flag = fraction < tsne_thresh
+    adata.obs["QC_tsne_based_filter"] = flag
+    logger.info(
+        f"🎯 t-SNE filtering flagged {int(flag.sum())}/{len(flag)} cells (good neighbor fraction < {tsne_thresh})")
+
+    # Update filtering_status
+    to_update = flag & (adata.obs["filtering_status"] == "Unfiltered")
+    adata.obs.loc[to_update, "filtering_status"] = "bad tsne cluster"
+    logger.debug(f"🔄 Updated filtering_status for {int(to_update.sum())} cells")
+
+    return adata
     x = coords[:, 0]
     y = coords[:, 1]
     logger.debug(f"🧪 Performing t-SNE filtering with radius={radius} on {len(x)} cells")
@@ -184,7 +232,7 @@ def perform_tsne_filtering(adata, radius):
     pts = np.asarray(coords)
 
     # Prefilter mask (use QC flags, not filtering_status)
-    mask = adata.obs.get("QC_low_intensity_filter", True) | adata.obs.get("QC_filter_low_quality_region", True)
+    mask = adata.obs.get("QC_low_intensity_filter", False) | adata.obs.get("QC_filter_low_quality_region", False)
     num_prefilter = int(mask.sum())
     logger.debug(f"🔍 Prefilter mask sum (intensity or region): {num_prefilter}")(
         f"🧪 t-SNE filtering with BallTree: total={pts.shape[0]} pts, filtered mask sum={num_prefilter}")
@@ -563,23 +611,12 @@ def run_qc_from_memory(args, adata):
     generate_summary_tables(adata, qc_out)
     logger.info("📊 Summary tables written")
 
-    # Save QC hyperparameters into adata.uns for provenance
-    adata.uns["qc_hyperparams"] = {
-        "low_intensity_threshold": args.low_intensity_threshold,
-        "density_window": args.qc_window_size,
-        "density_stride": args.qc_stride,
-        "density_threshold": args.qc_density_threshold,
-        "region_threshold": args.qc_region_threshold,
-        "tsne_radius": args.radius_DRfilter,
-    }
-
     # Final: Apply filtering and save
     logger.info("💾 Saving filtered AnnData")
     keep = ~(adata.obs["QC_low_intensity_filter"] | adata.obs["QC_filter_low_quality_region"])
     adata = adata[keep].copy()
     out_path = os.path.join(args.output_base_path, "adata_objects", "adata1.h5ad")
     adata.write_h5ad(out_path)
-
     logger.info(f"💾 QC-completed AnnData saved to: {out_path}")
     print(f"✅ QC-completed AnnData saved to: {out_path}")
     del adata
