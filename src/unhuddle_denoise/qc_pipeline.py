@@ -70,14 +70,14 @@ def compute_density_map(segmentation_mask, filtered_cells, window_size=50, strid
 
 
 def perform_density_filtering(
-    adata,
-    qc_output_dir,
-    density_dir,
-    window_size=50,
-    stride=10,
-    density_threshold=550,
-    region_threshold=0.8,
-    density_scale=(0, 800)
+        adata,
+        qc_output_dir,
+        density_dir,
+        window_size=50,
+        stride=10,
+        density_threshold=550,
+        region_threshold=0.8,
+        density_scale=(0, 800)
 ):
     """
     Loop over each FOV to compute density maps with a progress bar.
@@ -131,32 +131,67 @@ def perform_density_filtering(
 
 def perform_tsne_filtering(adata, radius):
     from scipy.spatial import cKDTree
-    x, y = adata.obsm["X_tsne"][:, 0], adata.obsm["X_tsne"][:, 1]
+    # Debug: log initial status
+    total_cells = adata.n_obs if hasattr(adata, 'n_obs') else adata.obs.shape[0]
+    logger.debug(f"🧪 t-SNE filtering: radius={radius}, total cells={total_cells}")
 
-    filtered = adata.obs["filtering_status"] != "Unfiltered"
-    tree_all = cKDTree(np.column_stack((x, y)))
-    tree_f = cKDTree(np.column_stack((x[filtered], y[filtered])))
-    tot = [len(n) for n in tree_all.query_ball_point(np.column_stack((x, y)), r=radius)]
-    flt = [len(n) for n in tree_f.query_ball_point(np.column_stack((x, y)), r=radius)]
-    frac = np.divide(flt, tot, out=np.zeros_like(tot, float), where=np.array(tot) > 0)
-    adata.obs["QC_fraction_filtered"] = frac
-    adata.obs["QC_tsne_based_filter"] = frac > 0.25
-    adata.obs.loc[adata.obs["QC_tsne_based_filter"] & (adata.obs["filtering_status"] == "Unfiltered"),
-                  "filtering_status"] = "bad tsne cluster"
+    x = adata.obsm.get("X_tsne")
+    if x is None:
+        logger.error("❌ Missing X_tsne in obsm; skipping t-SNE filtering.")
+        return adata
+    x_vals, y_vals = x[:, 0], x[:, 1]
+
+    filtered_mask = adata.obs["filtering_status"] != "Unfiltered"
+    num_filtered = filtered_mask.sum()
+    logger.debug(f"🔍 t-SNE filtering: prefiltered cells={num_filtered}")
+
+    # Build k-d trees
+    tree_all = cKDTree(np.column_stack((x_vals, y_vals)))
+    tree_filtered = cKDTree(np.column_stack((x_vals[filtered_mask], y_vals[filtered_mask])))
+    logger.debug("🌲 KD-trees constructed")
+
+    # Query neighborhoods
+    pts = np.column_stack((x_vals, y_vals))
+    neighbors_total = tree_all.query_ball_point(pts, r=radius)
+    neighbors_filtered = tree_filtered.query_ball_point(pts, r=radius)
+    logger.debug(
+        f"📡 Queried {len(neighbors_total)} neighborhoods for total and {len(neighbors_filtered)} for filtered.")
+
+    count_total = np.array([len(n) for n in neighbors_total], dtype=int)
+    count_filtered = np.array([len(n) for n in neighbors_filtered], dtype=int)
+    logger.debug(f"🔢 Example counts (total, filtered): {list(zip(count_total[:5], count_filtered[:5]))}")
+
+    # Compute fraction
+    fraction = np.zeros_like(count_total, dtype=float)
+    valid = count_total > 0
+    fraction[valid] = count_filtered[valid] / count_total[valid]
+    adata.obs["QC_fraction_filtered"] = fraction
+    logger.debug(f"📊 QC_fraction_filtered stats: min={fraction.min()}, max={fraction.max()}")
+
+    tsne_thresh = 0.25
+    mask_tsne = fraction > tsne_thresh
+    adata.obs["QC_tsne_based_filter"] = mask_tsne
+    num_flagged = mask_tsne.sum()
+    logger.info(f"🎯 t-SNE filtering flagged {num_flagged} cells (threshold {tsne_thresh})")
+
+    # Update filtering_status
+    to_update = mask_tsne & (adata.obs["filtering_status"] == "Unfiltered")
+    adata.obs.loc[to_update, "filtering_status"] = "bad tsne cluster"
+    logger.debug(f"🔄 Updated filtering_status for {to_update.sum()} newly flagged cells.")
+
     return adata
 
 
 def generate_segmentation_images(adata, fovs, density_dir, segmentation_dir, region_cells_by_fov):
     """
-    Parallel rendering of segmentation overlays with progress bar using multiple processes.
+    Serial rendering of segmentation overlays with progress bar.
     """
     os.makedirs(segmentation_dir, exist_ok=True)
-
-    def render(fov):
+    for fov in tqdm(fovs, desc="🎨 Segmentation QC", unit="FOV"):
         spatial = adata.uns.get("spatial", {}).get(fov, {})
         if "segmentation" not in spatial:
             logger.warning(f"⚠️ Skipping {fov} – no segmentation mask.")
-            return None
+            continue
 
         seg_mask = spatial["segmentation"]
         H, W = seg_mask.shape
@@ -183,13 +218,9 @@ def generate_segmentation_images(adata, fovs, density_dir, segmentation_dir, reg
 
         out = os.path.join(segmentation_dir, f"{fov}.png")
         plt.imsave(out, img)
-        return fov
 
-    # parallel map with progress bar
-    from concurrent.futures import ProcessPoolExecutor
-    max_workers = min(os.cpu_count() or 1, len(fovs))
-    with ProcessPoolExecutor(max_workers=max_workers) as pool:
-        list(tqdm(pool.map(render, fovs), total=len(fovs), desc="🎨 Segmentation QC", unit="FOV"))
+    logger.info("🎨 Segmentation overlays completed")
+
 
 def create_storyboard(image_paths, output_path, cols=10, max_storyboard_width=10000, ppi=70):
     if not image_paths:
@@ -200,9 +231,9 @@ def create_storyboard(image_paths, output_path, cols=10, max_storyboard_width=10
     imgs = [i.resize((w, h), Image.LANCZOS) for i in imgs]
 
     rows = (len(imgs) + cols - 1) // cols
-    out = Image.new("RGB", (min(cols*w, max_storyboard_width), rows*h), (255, 255, 255))
+    out = Image.new("RGB", (min(cols * w, max_storyboard_width), rows * h), (255, 255, 255))
     for i, img in enumerate(imgs):
-        x, y = (i % cols)*w, (i//cols)*h
+        x, y = (i % cols) * w, (i // cols) * h
         out.paste(img, (x, y))
     out.save(output_path, dpi=(ppi, ppi))
 
@@ -222,24 +253,26 @@ def generate_tsne_plot(adata, qc_output_dir):
         logger.warning("⚠️ No t-SNE coords, skipping.")
         return
 
-    x, y = adata.obsm["X_tsne"][:,0], adata.obsm["X_tsne"][:,1]
+    x, y = adata.obsm["X_tsne"][:, 0], adata.obsm["X_tsne"][:, 1]
     status = adata.obs["filtering_status"]
     colors = np.full(len(x), "lightgray", object)
-    colors[status=="low intensity cell"] = "red"
-    colors[status=="low quality region"] = "green"
-    colors[status=="bad tsne cluster"] = "yellow"
+    colors[status == "low intensity cell"] = "red"
+    colors[status == "low quality region"] = "green"
+    colors[status == "bad tsne cluster"] = "yellow"
 
-    fig, ax = plt.subplots(figsize=(8,6))
+    fig, ax = plt.subplots(figsize=(8, 6))
     ax.scatter(x, y, c=colors, s=0.5, alpha=0.8)
     ax.set_title("t-SNE QC")
-    ax.set_xlabel("t-SNE 1"); ax.set_ylabel("t-SNE 2")
+    ax.set_xlabel("t-SNE 1");
+    ax.set_ylabel("t-SNE 2")
     ax.legend(handles=[
-        plt.Line2D([],[],marker='o', color='w', markerfacecolor=m, label=l, markersize=6)
-        for l,m in [("Low Intensity","red"),("Low Quality","green"),("t-SNE Cluster","yellow"),("Unfiltered","lightgray")]
+        plt.Line2D([], [], marker='o', color='w', markerfacecolor=m, label=l, markersize=6)
+        for l, m in
+        [("Low Intensity", "red"), ("Low Quality", "green"), ("t-SNE Cluster", "yellow"), ("Unfiltered", "lightgray")]
     ], title="Status", loc="upper right")
 
     os.makedirs(qc_output_dir, exist_ok=True)
-    plt.savefig(os.path.join(qc_output_dir,"tsne_qc.png"), dpi=300, bbox_inches="tight")
+    plt.savefig(os.path.join(qc_output_dir, "tsne_qc.png"), dpi=300, bbox_inches="tight")
     plt.close()
 
 
@@ -248,23 +281,23 @@ def generate_summary_tables(adata, qc_output_dir):
     status = adata.obs["filtering_status"]
     counts = {
         "Total Cells": total,
-        "Low Intensity": (status=="low intensity cell").sum(),
-        "Low Quality Region": (status=="low quality region").sum(),
-        "t-SNE Filter": (status=="bad tsne cluster").sum()
+        "Low Intensity": (status == "low intensity cell").sum(),
+        "Low Quality Region": (status == "low quality region").sum(),
+        "t-SNE Filter": (status == "bad tsne cluster").sum()
     }
     summary = pd.DataFrame([
-        {"Filter Step":k, "Absolute Count":v, "Percentage": v/total*100}
-        for k,v in counts.items()
+        {"Filter Step": k, "Absolute Count": v, "Percentage": v / total * 100}
+        for k, v in counts.items()
     ])
     fov_stats = []
     for fov in adata.obs["fov"].unique():
-        m = adata.obs["fov"]==fov
+        m = adata.obs["fov"] == fov
         fov_stats.append({
             "FOV": fov,
-            **{k:(m & (status==k.lower().replace(" ","_"))).sum() for k in counts}
+            **{k: (m & (status == k.lower().replace(" ", "_"))).sum() for k in counts}
         })
-    pd.DataFrame(fov_stats).to_csv(os.path.join(qc_output_dir,"per_fov_stats.csv"), index=False)
-    summary.to_csv(os.path.join(qc_output_dir,"overall_stats.csv"), index=False)
+    pd.DataFrame(fov_stats).to_csv(os.path.join(qc_output_dir, "per_fov_stats.csv"), index=False)
+    summary.to_csv(os.path.join(qc_output_dir, "overall_stats.csv"), index=False)
 
 
 def run_qc_from_memory(args, adata):
@@ -320,7 +353,7 @@ def run_qc_from_memory(args, adata):
     adata.obs.loc[adata.obs["QC_filter_low_quality_region"], "filtering_status"] = "low quality region"
     adata.obs.loc[adata.obs["QC_low_intensity_filter"], "filtering_status"] = "low intensity cell"
 
-        # Step 7: Segmentation overlays (parallelized)
+    # Step 7: Segmentation overlays (parallelized)
     logger.info("🎨 Generating segmentation overlays in parallel...")
     generate_segmentation_images(adata, list(region_map.keys()), dens_dir, seg_dir, region_map)
     logger.info("🎨 Segmentation overlays completed")
