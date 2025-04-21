@@ -180,7 +180,7 @@ def generate_dr_plot(adata, qc_dir):
     ax.set_ylabel(f"{dr_key} 2")
     ax.legend(
         handles=[
-            plt.Line2D([], [], marker='o', color='w', markerfacecolor=c, label=l, markersize=6)
+            plt.Line2D([], [], marker='o', color='w', markerfacecolor=c, label=l, markersize=10)
             for l, c in [
                 ('Low Intensity Cell', 'red'),
                 ('Low Quality Region', 'green'),
@@ -271,7 +271,7 @@ def run_qc_from_memory(args, adata):
     generate_storyboards(qc_dir,dens,seg,sb,list(region_map))
 
     # DR plot
-    logger.info('📈 Filtering results in DR plot')
+    logger.info('📈 Filtering results in Dimension Reduction plot')
     generate_dr_plot(adata,qc_dir)
 
     # summary
