@@ -178,9 +178,22 @@ def generate_dr_plot(adata, qc_dir):
     ax.set_title(f"Filtering Results after Dimension Reduction ({dr_key})")
     ax.set_xlabel(f"{dr_key} 1")
     ax.set_ylabel(f"{dr_key} 2")
-    ax.legend(handles=[plt.Line2D([],[],marker='o',color='w',markerfacecolor=c,label=l,markersize=6)
-                       for l,c in [('Low Intensity Cell','red'),('Low Quality Region','green'),('Bad DR Cluster','yellow'),('Unfiltered','lightgray')]],
-              title='Filter',loc='upper right')
+    ax.legend(
+        handles=[
+            plt.Line2D([], [], marker='o', color='w', markerfacecolor=c, label=l, markersize=6)
+            for l, c in [
+                ('Low Intensity Cell', 'red'),
+                ('Low Quality Region', 'green'),
+                ('Bad DR Cluster', 'yellow'),
+                ('Unfiltered', 'lightgray')
+            ]
+        ],
+        title='Filter',
+        loc='upper right',
+        markerscale=0.5,  # Shrinks marker size
+        fontsize='x-small',  # Shrinks label text
+        title_fontsize='small'  # Shrinks title
+    )
     plt.savefig(os.path.join(qc_dir,'dr_qc.png'),dpi=200,bbox_inches='tight')
     plt.close()
 
