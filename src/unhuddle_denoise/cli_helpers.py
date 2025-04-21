@@ -1,5 +1,6 @@
 import os
 import sys
+import re
 import glob
 import logging
 import argparse
@@ -185,10 +186,23 @@ def list_available_markers(args: argparse.Namespace) -> None:
     print("\n✅ Rerun without --list_available_markers to start the pipeline\n")
 
 
-def setup_output_directories(output_base: str) -> dict:
+def setup_output_directories(output_base: str, args) -> dict:
     """
-    Create and return the necessary output directories.
+    Conditionally create and return the necessary output directories based on CLI flags.
+
+    Parameters:
+    -----------
+    output_base : str
+        Base path to create output subdirectories.
+    args : Namespace
+        Parsed CLI arguments to decide which folders are required.
+
+    Returns:
+    --------
+    dict
+        Mapping of folder roles to their full output paths.
     """
+
     dirs = {
         "morph": os.path.join(output_base, "morphology_features"),
         "protein": os.path.join(output_base, "protein_features"),
@@ -196,16 +210,30 @@ def setup_output_directories(output_base: str) -> dict:
         "original_norm": os.path.join(output_base, "original_normalized"),
         "unhuddle_sum": os.path.join(output_base, "unhuddle_sum"),
         "unhuddle_norm": os.path.join(output_base, "unhuddle_normalized"),
-        "unhuddle_denoised_sum": os.path.join(output_base, "unhuddle_denoised_sum"),
-        "unhuddle_denoised_norm": os.path.join(output_base, "unhuddle_denoised_normalized"),
-        "metadata_denoised": os.path.join(output_base, "metadata_denoise"),
-        "adata": os.path.join(output_base, "adata_objects"),
-        "fitsne": os.path.join(output_base, "fitsne_coords"),
-        "QC": os.path.join(output_base, "QC")
+        "QC": os.path.join(output_base, "QC"),
     }
-    for directory in dirs.values():
-        os.makedirs(directory, exist_ok=True)
+
+    # Conditional folders
+    if getattr(args, "create_adata", False):
+        dirs["adata"] = os.path.join(output_base, "adata_objects")
+
+    if getattr(args, "fitsne", False) or getattr(args, "add_dimensionreduction_coords", None):
+        dirs["dr"] = os.path.join(output_base, "dr_coords")
+
+    if getattr(args, "denoise_metadata", False):
+        dirs["metadata_denoised"] = os.path.join(output_base, "metadata_denoise")
+
+    # Denoised layers always created if denoising is active
+    if getattr(args, "denoise", False):
+        dirs["unhuddle_denoised_sum"] = os.path.join(output_base, "unhuddle_denoised_sum")
+        dirs["unhuddle_denoised_norm"] = os.path.join(output_base, "unhuddle_denoised_normalized")
+
+    # Actually create the folders
+    for path in dirs.values():
+        os.makedirs(path, exist_ok=True)
+
     return dirs
+
 
 
 def get_fov_folders(args: argparse.Namespace, dirs: dict) -> list:
@@ -362,6 +390,18 @@ def maybe_build_adata(args):
 
 
 
+def infer_dr_method_from_colnames(coord_cols):
+    """
+    Try to infer DR method name from coordinate column names.
+    """
+    known_methods = ["umap", "tsne", "fitsne", "optsne", "phate", "pca"]
+    for col in coord_cols:
+        for method in known_methods:
+            if method in col.lower():
+                return method
+    return "ext_dr"  # fallback
+
+
 def create_adata(args: argparse.Namespace) -> None:
     logging.info("\n📦 Creating unified AnnData object...")
     adata = maybe_build_adata(args)
@@ -373,9 +413,22 @@ def create_adata(args: argparse.Namespace) -> None:
     if args.no_qc:
         print("⚠️ Skipping QC (user passed --no_qc)")
         return
-    # ── Optionally add external DR coordinates ───────────────────────────────────────
+
+    # ── Step 1: Defensive loading of fitsne ─────────────────────────────────────────
+    fitsne_path = os.path.join(args.output_base_path, "dr_coords", f"{adata.obs['fov'].unique()[0]}.csv")
+    if os.path.exists(fitsne_path):
+        if not getattr(args, "fitsne", False):
+            print("⚠️ Found dr_coords/ folder, but --fitsne was not passed.")
+            print("ℹ️ Please rerun with --fitsne to use this folder, or remove the folder to avoid this message.")
+            return
+
+        coords = pd.read_csv(fitsne_path).values
+        adata.obsm["X_fitsne"] = coords
+        logging.info("✅ Loaded fitSNE coords into adata.obsm['X_fitsne']")
+
+    # ── Step 2: Load external DR coordinates if supplied ────────────────────────────
     if args.add_dimensionreduction_coords:
-        logging.info(f"Loading external DR coordinates from: {args.add_dimensionreduction_coords}")
+        logging.info(f"📥 Loading external DR coordinates from: {args.add_dimensionreduction_coords}")
         all_coords = []
 
         for fov in adata.obs["fov"].unique():
@@ -388,12 +441,10 @@ def create_adata(args: argparse.Namespace) -> None:
             if df.shape[1] < 3:
                 raise ValueError(f"Expected 3 columns in {fov_csv}, got: {df.columns.tolist()}")
 
-            # Force rename
             df.columns = ["label"] + args.coord_cols
             df["cell_id"] = df["label"].astype(str).apply(lambda x: f"{fov}_{x}")
             df = df.set_index("cell_id")
 
-            # Align to AnnData index
             valid_cells = adata.obs.index.intersection(df.index)
             missing = set(df.index) - set(valid_cells)
             if missing:
@@ -401,15 +452,18 @@ def create_adata(args: argparse.Namespace) -> None:
 
             all_coords.append(df.loc[valid_cells, args.coord_cols])
 
-        # Combine all FOVs
         combined_coords = pd.concat(all_coords)
         coords_array = combined_coords.reindex(adata.obs.index).to_numpy()
 
-        # Save into obsm
-        adata.obsm["X_external_dr"] = coords_array
-        logging.info("Stored external DR coordinates in adata.obsm['X_external_dr']")
+        dr_method = infer_dr_method_from_colnames(args.coord_cols)
+        obsm_key = f"X_{dr_method}"
+        adata.obsm[obsm_key] = coords_array
+        adata.uns["dr_source"] = f"external::{dr_method}"
 
-        return adata
+        logging.info(f"✅ Stored external DR coordinates in adata.obsm['{obsm_key}']")
+
+    return adata
+
     run_qc_pipeline(args, adata)
 
 
@@ -418,7 +472,7 @@ def fitsne(args):
     print("🚀 Running FIt-SNE dimensionality reduction step...")
     from unhuddle_denoise.run_fitsne import run_fitsne_dimension_reduction
 
-    fitsne_dir = os.path.join(args.output_base_path, "fitsne_coords")
+    fitsne_dir = os.path.join(args.output_base_path, "dr_coords")
     input_dir = os.path.join(args.output_base_path, "unhuddle_denoised_normalized")
 
     run_fitsne_dimension_reduction(

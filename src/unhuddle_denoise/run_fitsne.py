@@ -8,7 +8,7 @@ import logging
 
 def run_fitsne_dimension_reduction(output_base,
                                    input_dir="unhuddle_denoised_normalized",
-                                   fitsne_dir="fitsne_coords",
+                                   fitsne_dir="dr_coords",
                                    perplexity=30,
                                    threads=1):
     """

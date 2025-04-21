@@ -60,7 +60,8 @@ def main():
         logger.info("⚙️ Percentile normalization enabled — cohort-level ExclMem_Sum data will be fetched before FOV loop.")
 
     # Setup paths and input FOVs
-    dirs = setup_output_directories(args.output_base_path)
+    dirs = setup_output_directories(args.output_base_path, args)
+
     fov_folders = get_fov_folders(args, dirs)
 
     if not fov_folders:

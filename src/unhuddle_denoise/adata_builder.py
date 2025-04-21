@@ -141,7 +141,7 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
         if os.path.exists(mask_path):
             adata.uns["spatial"][fov] = {"segmentation": imread(mask_path)}
 
-    fitsne_path = os.path.join(output_base_path, "fitsne_coords", f"{fovs[0]}.csv")
+    fitsne_path = os.path.join(output_base_path, "dr_coords", f"{fovs[0]}.csv")
     if os.path.exists(fitsne_path):
         coords = pd.read_csv(fitsne_path).values
         adata.obsm["X_fitsne"] = coords
