@@ -144,7 +144,8 @@ def perform_tsne_filtering(adata, radius):
     logger.debug(f"🧪 Performing t-SNE filtering with radius={radius} on {len(x)} cells")
 
     # Determine which cells have already been filtered
-    filtered_mask = adata.obs.get("QC_low_intensity_filter", False) | adata.obs.get("QC_filter_low_quality_region", False)
+    filtered_mask = adata.obs.get("QC_low_intensity_filter", False) | adata.obs.get("QC_filter_low_quality_region",
+                                                                                    False)
     logger.debug(f"🔍 Prefilter mask: {filtered_mask.sum()} cells flagged (intensity or region)")
     x_filtered = x[~filtered_mask]
     y_filtered = y[~filtered_mask]
@@ -185,7 +186,8 @@ def perform_tsne_filtering(adata, radius):
     # Prefilter mask (use QC flags, not filtering_status)
     mask = adata.obs.get("QC_low_intensity_filter", False) | adata.obs.get("QC_filter_low_quality_region", False)
     num_prefilter = int(mask.sum())
-    logger.debug(f"🔍 Prefilter mask sum (intensity or region): {num_prefilter}")(f"🧪 t-SNE filtering with BallTree: total={pts.shape[0]} pts, filtered mask sum={num_prefilter}")
+    logger.debug(f"🔍 Prefilter mask sum (intensity or region): {num_prefilter}")(
+        f"🧪 t-SNE filtering with BallTree: total={pts.shape[0]} pts, filtered mask sum={num_prefilter}")
 
     # Build BallTrees
     tree_all = BallTree(pts)
@@ -336,7 +338,8 @@ def perform_tsne_filtering(adata, radius):
     pts = np.column_stack((x_vals, y_vals))
     neighbors_total = tree_all.query_ball_point(pts, r=radius)
     neighbors_filtered = tree_filtered.query_ball_point(pts, r=radius)
-    logger.debug(f"📡 Queried {len(neighbors_total)} neighborhoods for total and {len(neighbors_filtered)} for filtered.")
+    logger.debug(
+        f"📡 Queried {len(neighbors_total)} neighborhoods for total and {len(neighbors_filtered)} for filtered.")
 
     count_total = np.array([len(n) for n in neighbors_total], dtype=int)
     count_filtered = np.array([len(n) for n in neighbors_filtered], dtype=int)
@@ -361,7 +364,6 @@ def perform_tsne_filtering(adata, radius):
     logger.debug(f"🔄 Updated filtering_status for {to_update.sum()} newly flagged cells.")
 
     return adata
-
 
 
 def generate_segmentation_images(adata, fovs, density_dir, segmentation_dir, region_cells_by_fov):
@@ -485,6 +487,11 @@ def generate_summary_tables(adata, qc_output_dir):
 def run_qc_from_memory(args, adata):
     qc_out, dens_dir, seg_dir, sb_dir = create_directories(args.output_base_path)
     logger.info("🚀 Running QC filtering pipeline ...")
+    # Echo QC hyperparameters
+    logger.info(f"🔧 Low-intensity threshold: {args.low_intensity_threshold}")
+    logger.info(f"🔧 Density filter window size: {args.qc_window_size}, stride: {args.qc_stride}")
+    logger.info(f"🔧 Density threshold: {args.qc_density_threshold}, region threshold: {args.qc_region_threshold}")
+    logger.info(f"🔧 t-SNE filtering radius: {args.radius_DRfilter}")
 
     # Step 1: Low-intensity filter
     tot = adata.layers["sum_unhuddle"].sum(axis=1)
@@ -556,12 +563,23 @@ def run_qc_from_memory(args, adata):
     generate_summary_tables(adata, qc_out)
     logger.info("📊 Summary tables written")
 
+    # Save QC hyperparameters into adata.uns for provenance
+    adata.uns["qc_hyperparams"] = {
+        "low_intensity_threshold": args.low_intensity_threshold,
+        "density_window": args.qc_window_size,
+        "density_stride": args.qc_stride,
+        "density_threshold": args.qc_density_threshold,
+        "region_threshold": args.qc_region_threshold,
+        "tsne_radius": args.radius_DRfilter,
+    }
+
     # Final: Apply filtering and save
     logger.info("💾 Saving filtered AnnData")
     keep = ~(adata.obs["QC_low_intensity_filter"] | adata.obs["QC_filter_low_quality_region"])
     adata = adata[keep].copy()
     out_path = os.path.join(args.output_base_path, "adata_objects", "adata1.h5ad")
     adata.write_h5ad(out_path)
+
     logger.info(f"💾 QC-completed AnnData saved to: {out_path}")
     print(f"✅ QC-completed AnnData saved to: {out_path}")
     del adata
