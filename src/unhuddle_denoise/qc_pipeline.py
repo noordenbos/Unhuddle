@@ -175,7 +175,7 @@ def perform_tsne_filtering(adata, radius):
     logger.debug(f"📊 QC_fraction_filtered stats: min={fraction.min():.4f}, max={fraction.max():.4f}")
 
     # Flag as bad if too many neighbors were filtered (>75% filtered => good fraction < 0.25)
-    tsne_thresh = 0.25
+    tsne_thresh = 0.75
     flag = fraction < tsne_thresh
     adata.obs["QC_tsne_based_filter"] = flag
     logger.info(
@@ -546,10 +546,32 @@ def run_qc_from_memory(args, adata):
     adata.obs["total_intensity"] = np.asarray(tot).flatten()
     adata.obs["QC_low_intensity_filter"] = adata.obs["total_intensity"] < args.low_intensity_threshold
 
-    # Step 2: t-SNE / DR coords
+    # Step 2: Density filtering (spatial QC)
+    logger.info("🔍 Density QC starting")
+    adata, region_map = perform_density_filtering(
+        adata,
+        qc_out,
+        dens_dir,
+        window_size=args.qc_window_size,
+        stride=args.qc_stride,
+        density_threshold=args.qc_density_threshold,
+        region_threshold=args.qc_region_threshold,
+        density_scale=tuple(args.qc_plot_density_scale),
+    )
+    logger.info("🔍 Density QC completed")
+
+    # Label QC_filter_low_quality_region
+    adata.obs.loc[adata.obs_names.isin(set().union(*region_map.values())), "QC_filter_low_quality_region"] = True
+
+    # Initialize filtering_status
+    adata.obs["filtering_status"] = "Unfiltered"
+    adata.obs.loc[adata.obs["QC_filter_low_quality_region"], "filtering_status"] = "low quality region"
+    adata.obs.loc[adata.obs["QC_low_intensity_filter"], "filtering_status"] = "low intensity cell"
+
+    # Step 3: t-SNE / DR coords
     logger.info("🔄 Loading t-SNE / external DR coordinates ...")
-    tsne_dir = os.path.join(args.output_base_path, "fitsne_coords")
     tsne_avail = False
+    tsne_dir = os.path.join(args.output_base_path, "fitsne_coords")
     if "X_tsne" in adata.obsm:
         logger.info("✅ Preloaded t-SNE found")
         tsne_avail = True
@@ -564,35 +586,29 @@ def run_qc_from_memory(args, adata):
     else:
         logger.info("⚠️ No DR coords found; skipping t-SNE filtering")
 
-    # Step 3: Initialize status
-    adata.obs["filtering_status"] = "Unfiltered"
-
+    # Step 4: Optional t-SNE filtering
     if tsne_avail:
         logger.info("🎲 Running t-SNE based filtering")
         adata = perform_tsne_filtering(adata, args.radius_DRfilter)
         logger.info("🎲 t-SNE filtering completed")
 
-    # Step 6: Label filtering status
-    adata.obs.loc[adata.obs["QC_filter_low_quality_region"], "filtering_status"] = "low quality region"
-    adata.obs.loc[adata.obs["QC_low_intensity_filter"], "filtering_status"] = "low intensity cell"
-
-    # Step 7: Segmentation overlays (parallelized)
+    # Step 5: Segmentation overlays
     logger.info("🎨 Generating segmentation overlays in parallel...")
     generate_segmentation_images(adata, list(region_map.keys()), dens_dir, seg_dir, region_map)
     logger.info("🎨 Segmentation overlays completed")
 
-    # Step 8: Create storyboards
+    # Step 6: Create storyboards
     logger.info("📚 Creating storyboards")
     generate_storyboards(qc_out, dens_dir, seg_dir, sb_dir, list(region_map.keys()))
     logger.info("📚 Storyboards created")
 
-    # Step 9: Optional t-SNE plot
+    # Step 7: t-SNE plot
     if tsne_avail:
         logger.info("📈 Rendering t-SNE QC plot")
         generate_tsne_plot(adata, qc_out)
         logger.info("📈 t-SNE QC plot done")
 
-    # Step 10: Summary tables
+    # Step 8: Summary tables
     logger.info("📊 Generating summary tables")
     generate_summary_tables(adata, qc_out)
     logger.info("📊 Summary tables written")
