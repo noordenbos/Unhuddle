@@ -280,14 +280,19 @@ def run_qc_from_memory(args, adata):
     generate_summary_tables(adata,qc_dir)
 
     # final save
-    logger.info('💾 Save filtered')
-    keep=~(adata.obs['QC_low_intensity_filter']|adata.obs['QC_filter_low_quality_region'])
-    kept_count=int(keep.sum())
-    logger.info(f'🔧 Final cells retained={kept_count}/{adata.n_obs}')
-    adata=adata[keep].copy()
-    path=os.path.join(args.output_base_path,'adata_objects','adata1.h5ad')
+    logger.info('💾 Save flagged full AnnData (no cells removed)')
+    keep = ~(adata.obs['QC_low_intensity_filter'] | adata.obs['QC_filter_low_quality_region'])
+    kept_count = int(keep.sum())
+    logger.info(f'🔧 Final cells flagged: retained={kept_count}/{adata.n_obs}')
+
+    adata.obs['QC_final_keep'] = keep
+    adata.obs['QC_final_keep'] = adata.obs['QC_final_keep'].astype(bool)  # ensure bool dtype
+
+    path = os.path.join(args.output_base_path, 'adata_objects', 'adata1.h5ad')
     adata.write_h5ad(path)
-    logger.info(f'💾 Saved QC-adata: {path}')
-    print(f'✅ Saved QC-adata: {path}')
+    logger.info(f'💾 Saved full QC-flagged AnnData: {path}')
+    print(f'✅ Saved full QC-flagged AnnData: {path}')
+
     del adata
     print_success_guide(args.output_base_path)
+
