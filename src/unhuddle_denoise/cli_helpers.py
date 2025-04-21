@@ -135,8 +135,10 @@ def parse_arguments() -> argparse.Namespace:
         default=10,
         help="Objective magnification to select in DeepCell UI (e.g., 10, 20, 40)"
     )
-    parser.add_argument("--use_denoised", action="store_true",
+    parser.add_argument("--use_denoised", dest="use_denoised", action="store_true",
                         help="Experimental, uses cohort level data to denoise reallocation factors")
+    parser.add_argument("--use_denoise", dest="use_denoised", action="store_true",
+                        help=argparse.SUPPRESS)
     parser.add_argument("--fitsne", action="store_true",
                         help="Run dimension reduction using fitSNE and receive QC filtering")
     parser.add_argument("--no_qc", action="store_true", help="Avoid QC filtering on finalized AnnData object.")
@@ -220,13 +222,10 @@ def setup_output_directories(output_base: str, args) -> dict:
     if getattr(args, "fitsne", False) or getattr(args, "add_dimensionreduction_coords", None):
         dirs["dr"] = os.path.join(output_base, "dr_coords")
 
-    if getattr(args, "denoise_metadata", False):
-        dirs["metadata_denoised"] = os.path.join(output_base, "metadata_denoise")
-
-    # Denoised layers always created if denoising is active
-    if getattr(args, "denoise", False):
+    if getattr(args, "use_denoised", False):
         dirs["unhuddle_denoised_sum"] = os.path.join(output_base, "unhuddle_denoised_sum")
         dirs["unhuddle_denoised_norm"] = os.path.join(output_base, "unhuddle_denoised_normalized")
+        dirs["metadata_denoised"] = os.path.join(output_base, "metadata_denoise")
 
     # Actually create the folders
     for path in dirs.values():
@@ -353,9 +352,10 @@ def build_feature_args(fov: str, dirs: dict, args: argparse.Namespace):
 
 def build_reallocation_args(fov: str, dirs: dict, args: argparse.Namespace):
     protein_path = os.path.join(dirs["protein"], f"{os.path.basename(fov)}.csv")
-
     protein_df = pd.read_csv(protein_path)
-
+    if args.use_denoised and ("unhuddle_denoised_sum" not in dirs or "unhuddle_denoised_norm" not in dirs):
+        import logging
+        logging.warning("⚠️ --use_denoised was passed, but denoised directories are missing from `dirs`")
 
     return (
         fov,
@@ -364,12 +364,13 @@ def build_reallocation_args(fov: str, dirs: dict, args: argparse.Namespace):
         dirs["original_norm"],
         dirs["unhuddle_sum"],
         dirs["unhuddle_norm"],
-        dirs["unhuddle_denoised_sum"],
-        dirs["unhuddle_denoised_norm"],
+        dirs.get("unhuddle_denoised_sum", None),
+        dirs.get("unhuddle_denoised_norm", None),
         args.normalisation_markers,
         args.use_denoised,
         args.log_level
     )
+
 
 def maybe_build_adata(args):
     from unhuddle_denoise.adata_builder import build_adata_from_outputs

@@ -141,30 +141,33 @@ def process_fov_reallocation_only(
     result = {"fov": fov_path}
 
     try:
-
+        # ── Load segmentation masks ─────────────────────────────────────
         cell_mask_path = os.path.join(fov_path, "deepcel_mask.tiff")
         if not os.path.exists(cell_mask_path):
             raise FileNotFoundError(f"deepcel_mask.tiff not found in {fov_path}")
         cell_mask = io.imread(cell_mask_path)
-        logger.debug(f"🧪 Loaded cell_mask from disk with shape {cell_mask.shape} and dtype {cell_mask.dtype}")
 
         membrane_path = os.path.join(fov_path, "membrane_mask.tiff")
         if not os.path.exists(membrane_path):
             raise FileNotFoundError(f"membrane_mask.tiff not found in {fov_path}")
         membrane_mask = io.imread(membrane_path)
-        logger.debug(f"🧪 Loaded membrane_mask from disk with shape {membrane_mask.shape} and dtype {membrane_mask.dtype}")
 
+        logger.debug(f"🧪 Loaded cell and membrane masks with shape: {cell_mask.shape}")
+
+        # ── Compute interactions ────────────────────────────────────────
         border_int = compute_border_interactions(cell_mask, membrane_mask)
         background_int, _ = compute_background_interactions(cell_mask)
         merged = merge_interactions(border_int, background_int)
         all_interactions = integrate_intensities_for_interactions(fov_path, merged)
 
+        # ── Compute reallocation ────────────────────────────────────────
         reallocation = compute_reallocation_with_checks(
             all_interactions, protein_features, tol=1e-6, use_denoised=use_denoised
         )
 
-        # Run both residual- and canonical-based intensity correction when using denoised mode
-        if use_denoised:
+        # ── Optional: Denoised Reallocation ─────────────────────────────
+        if use_denoised and unhuddle_denoised_sum_dir and unhuddle_denoised_norm_dir:
+            logger.info(f"🔁 Running denoised reallocation for FOV: {fov_path}")
             denoised_df = settle_debts_from_residuals(
                 fov_folder=fov_path,
                 reallocation=reallocation,
@@ -177,7 +180,6 @@ def process_fov_reallocation_only(
             )
             result["intensity_settled_denoised"] = True
 
-            # Save denoised_df directly
             fov_name = os.path.basename(fov_path)
             denoised_output_path = os.path.join(unhuddle_denoised_sum_dir, f"{fov_name}.csv")
             denoised_df.to_csv(denoised_output_path, index=False)
@@ -191,8 +193,10 @@ def process_fov_reallocation_only(
                 output_file = os.path.join(unhuddle_denoised_norm_dir, f"{fov_name}.csv")
                 norm_denoised.to_csv(output_file, index=False)
                 result["normalized_intensity_denoised"] = True
+        else:
+            logger.info(f"ℹ️ Skipping denoised reallocation for {fov_path} — flag or output dirs not set.")
 
-        # Always also run canonical for comparison
+        # ── Canonical: always run ──────────────────────────────────────
         original_sum_df, corrected_sum_df = settle_debts_intensity(
             fov_path, reallocation, protein_features,
             original_sum_dir, unhuddle_sum_dir
@@ -220,8 +224,9 @@ def process_fov_reallocation_only(
             result["normalized_original_intensity"] = True
 
     except Exception as e:
-        logger.error(f"Reallocation failed for {fov_path}: {e}")
+        logger.error(f"❌ Reallocation failed for {fov_path}: {e}")
         result["reallocation_error"] = str(e)
 
     return result
+
 

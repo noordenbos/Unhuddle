@@ -3,6 +3,7 @@ import glob
 import numpy as np
 import pandas as pd
 import warnings
+from collections import defaultdict, Counter
 import concurrent.futures
 from tqdm import tqdm
 from anndata import AnnData, concat
@@ -59,6 +60,9 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
     all_obsm_spatial = []
 
     for fov in tqdm(fovs, desc="Constructing AnnData"):
+        fov_count = 0
+        denoised_fovs = []
+        layer_counts = defaultdict(int)
         paths = {
             "intensity": f"{output_base_path}/unhuddle_normalized/{fov}.csv",
             "sum": f"{output_base_path}/unhuddle_sum/{fov}.csv",
@@ -95,19 +99,26 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
         morph.drop(columns=["FOV", "Label", "Centroid_Row", "Centroid_Col", "Nucleus_Centroid_Row", "Nucleus_Centroid_Col"], errors="ignore", inplace=True)
         all_obs.append(morph)
 
-        if denoised_intensity is not None:
+        if denoised_intensity is not None and denoised_sum is not None:
             X = denoised_intensity.drop(columns=["Label"], errors="ignore")
+            all_layers["sum_unhuddle_denoised"].append(denoised_sum.drop(columns=["Label"], errors="ignore").values)
             X_source = "normalized_unhuddle_denoised"
+            logger.debug(f"✅ Using denoised intensity data for FOV: {fov}")
         else:
             X = intensity.drop(columns=["Label"], errors="ignore")
             X_source = "normalized_unhuddle"
+            logger.debug(f"⚠️ Denoised data missing for FOV: {fov}, falling back to regular normalized intensity")
 
         all_X.append(X.values)
+        fov_count += 1
+        X_shape = X.values.shape
+        logger.debug(f"📦 [{fov}] → X shape: {X_shape}")
 
         all_layers["sum_unhuddle"].append(sum_unhuddle.drop(columns=["Label"], errors="ignore").values)
         all_layers["sum_original"].append(sum_orig.drop(columns=["Label"], errors="ignore").values)
-        if denoised_sum is not None:
-            all_layers["sum_unhuddle_denoised"].append(denoised_sum.drop(columns=["Label"], errors="ignore").values)
+        for key in all_layers:
+            if all_layers[key]:
+                layer_counts[key] += all_layers[key][-1].shape[0]
 
         if protein_df is not None:
             exclmem_cols = [col for col in protein_df.columns if col.endswith("_ExclusionMembrane_Sum_Intensity")]
@@ -118,6 +129,19 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
                 logger.info(f"✅ Reconstructed layer 'ExclMem_Sum' from protein_features for FOV: {fov}")
             else:
                 logger.warning(f"⚠️ No ExclusionMembrane_Sum_Intensity columns found in protein_features for FOV: {fov}")
+    logger.debug(f"🧮 Final FOVs used: {fov_count}")
+    logger.debug(f"🧪 Denoised FOVs used: {len(denoised_fovs)} → {denoised_fovs}")
+
+    n_obs = sum(x.shape[0] for x in all_X)
+    for key, arrs in all_layers.items():
+        if arrs:
+            shape_sum = sum(x.shape[0] for x in arrs)
+            logger.debug(f"📊 Layer '{key}': {shape_sum} rows across {len(arrs)} chunks")
+            if key == "sum_unhuddle_denoised":
+                assert shape_sum == n_obs, (
+                    f"❌ Mismatch for layer '{key}': "
+                    f"expected {n_obs}, got {shape_sum}"
+                )
 
     adata = AnnData(
         X=np.vstack(all_X),
@@ -130,7 +154,7 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
             adata.layers[key] = np.vstack(arrays)
 
     adata.obs["summed_intensity"] = adata.layers["sum_unhuddle"].sum(axis=1)
-    adata.uns["X_source"] = X_source
+    adata.uns["X_source"] = "normalized_unhuddle_denoised" if all_layers["sum_unhuddle_denoised"] else "normalized_unhuddle"
     adata.uns["fov-list"] = sorted(adata.obs["fov"].unique().tolist())
     adata.uns["patient_id-list"] = sorted(adata.obs["patient_id"].unique().tolist())
     adata.uns["marker-list"] = list(adata.var_names)
