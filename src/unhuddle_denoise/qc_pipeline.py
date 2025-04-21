@@ -112,8 +112,9 @@ def perform_density_filtering(
 
         kept = {f"{fov}_{lab}" for lab, ct in region.items() if ct / counts[lab] > region_threshold}
         region_cells_by_fov[fov] = kept
-        idx = adata.obs["fov"] == fov
-        adata.obs.loc[idx, "QC_filter_low_quality_region"] = adata.obs.index.isin(kept)
+        # Set QC flag for this FOV only on matching cells
+        fov_mask = adata.obs["fov"] == fov
+        adata.obs.loc[fov_mask, "QC_filter_low_quality_region"] = adata.obs.loc[fov_mask].index.isin(kept)
 
     return adata, region_cells_by_fov
 
