@@ -175,10 +175,12 @@ def generate_dr_plot(adata, qc_dir):
     colors[status=='bad dr cluster']='yellow'
     fig,ax=plt.subplots(figsize=(6,5))
     ax.scatter(coords[:,0],coords[:,1],c=colors, s=1, alpha=0.6)
-    ax.set_title('DR QC')
+    ax.set_title(f"Filtering Results after Dimension Reduction ({dr_key})")
+    ax.set_xlabel(f"{dr_key} 1")
+    ax.set_ylabel(f"{dr_key} 2")
     ax.legend(handles=[plt.Line2D([],[],marker='o',color='w',markerfacecolor=c,label=l,markersize=6)
-                       for l,c in [('Low Intensity','red'),('Low Quality','green'),('Bad DR','yellow'),('Unfiltered','lightgray')]],
-              title='Status',loc='upper right')
+                       for l,c in [('Low Intensity Cell','red'),('Low Quality Region','green'),('Bad DR Cluster','yellow'),('Unfiltered','lightgray')]],
+              title='Filter',loc='upper right')
     plt.savefig(os.path.join(qc_dir,'dr_qc.png'),dpi=200,bbox_inches='tight')
     plt.close()
 
