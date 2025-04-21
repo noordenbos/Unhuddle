@@ -152,8 +152,8 @@ def parse_arguments() -> argparse.Namespace:
                         help="Threshold for density map filtering (default: 550)")
     parser.add_argument("--qc_plot_density_scale", type=int, nargs=2, default=[0, 800],
                         help="Value range for density map visualization (default: 0 800)")
-    parser.add_argument("--radius_DRfilter", type=float, default=15.0,
-                        help="Neighborhood radius for dimension reduction based filtering (default: 15.0)")
+    parser.add_argument("--radius_DRfilter", type=float, default=0.8,
+                        help="Neighborhood radius for dimension reduction based filtering (default: 0.8)")
 
     #silent:
     parser.add_argument("--qc_region_threshold", type=float, default=0.8,
