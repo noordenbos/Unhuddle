@@ -130,15 +130,101 @@ def perform_density_filtering(
 
 
 def perform_tsne_filtering(adata, radius):
-    from scipy.spatial import cKDTree
-    # Debug: log initial status
-    total_cells = adata.n_obs if hasattr(adata, 'n_obs') else adata.obs.shape[0]
-    logger.debug(f"🧪 t-SNE filtering: radius={radius}, total cells={total_cells}")
-
-    x = adata.obsm.get("X_tsne")
-    if x is None:
+    """
+    Perform t-SNE based neighborhood filtering using efficient BallTree counts.
+    """
+    from sklearn.neighbors import BallTree
+    # Load coordinates
+    coords = adata.obsm.get("X_tsne")
+    if coords is None:
         logger.error("❌ Missing X_tsne in obsm; skipping t-SNE filtering.")
         return adata
+    pts = np.asarray(coords)
+    # Prefilter mask
+    mask = adata.obs["filtering_status"] != "Unfiltered"
+    logger.debug(f"🧪 t-SNE filtering with BallTree: total={pts.shape[0]} pts, filtered mask sum={mask.sum()}")
+
+    # Build trees
+    tree_all = BallTree(pts)
+    logger.debug("🌲 Built BallTree for all points")
+    pts_filt = pts[mask.values]
+    tree_filt = BallTree(pts_filt)
+    logger.debug(f"🌲 Built BallTree for {pts_filt.shape[0]} filtered points")
+
+    # Count neighbors within radius
+    count_total = tree_all.query_radius(pts, r=radius, count_only=True)
+    logger.debug("⏱ Completed total neighbor counts")
+    count_filtered = tree_filt.query_radius(pts, r=radius, count_only=True)
+    logger.debug("⏱ Completed filtered neighbor counts")
+
+    # Compute fraction safely
+    fraction = np.zeros_like(count_total, dtype=float)
+    nonzero = count_total > 0
+    fraction[nonzero] = count_filtered[nonzero] / count_total[nonzero]
+    adata.obs["QC_fraction_filtered"] = fraction
+    logger.debug(f"📊 QC_fraction_filtered: min={fraction.min():.4f}, max={fraction.max():.4f}")
+
+    # Flagging using threshold
+    thresh = 0.25
+    flag = fraction > thresh
+    adata.obs["QC_tsne_based_filter"] = flag
+    logger.info(f"🎯 t-SNE filtering flagged {flag.sum()} cells at threshold={thresh}")
+
+    # Update filtering_status
+    to_update = flag & (adata.obs["filtering_status"] == "Unfiltered")
+    adata.obs.loc[to_update, "filtering_status"] = "bad tsne cluster"
+    logger.debug(f"🔄 Updated status for {to_update.sum()} cells")
+
+    return adata
+    x_vals, y_vals = coords[:, 0], coords[:, 1]
+
+    filtered_mask = adata.obs["filtering_status"] != "Unfiltered"
+    num_prefilter = int(filtered_mask.sum())
+    logger.debug(f"🔍 Prefiltered cells (status != Unfiltered): {num_prefilter}")
+
+    # Build KD-trees
+    start_tree = time.time()
+    tree_all = cKDTree(np.column_stack((x_vals, y_vals)))
+    tree_filtered = cKDTree(np.column_stack((x_vals[filtered_mask], y_vals[filtered_mask])))
+    dt_tree = time.time() - start_tree
+    logger.debug(f"🌲 KD-tree construction took {dt_tree:.2f}s")
+
+    # Query total neighborhoods
+    pts = np.column_stack((x_vals, y_vals))
+    start_all = time.time()
+    neighbors_total = tree_all.query_ball_point(pts, r=radius)
+    dt_all = time.time() - start_all
+    logger.debug(f"⏱ Query total neighborhoods ({len(pts)} points) took {dt_all:.2f}s")
+
+    # Query filtered neighborhoods
+    start_filt = time.time()
+    neighbors_filtered = tree_filtered.query_ball_point(pts, r=radius)
+    dt_filt = time.time() - start_filt
+    logger.debug(f"⏱ Query filtered neighborhoods ({len(pts)} points) took {dt_filt:.2f}s")
+
+    # Compute counts and fraction
+    count_total = np.fromiter((len(n) for n in neighbors_total), dtype=int)
+    count_filtered = np.fromiter((len(n) for n in neighbors_filtered), dtype=int)
+    logger.debug(f"🔢 Sample counts (first 5): total={count_total[:5]}, filtered={count_filtered[:5]}")
+
+    fraction = np.zeros_like(count_total, dtype=float)
+    valid = count_total > 0
+    fraction[valid] = count_filtered[valid] / count_total[valid]
+    adata.obs["QC_fraction_filtered"] = fraction
+    logger.debug(f"📊 QC_fraction_filtered stats: min={fraction.min():.4f}, max={fraction.max():.4f}")
+
+    tsne_thresh = 0.25
+    mask_tsne = fraction > tsne_thresh
+    adata.obs["QC_tsne_based_filter"] = mask_tsne
+    num_flagged = int(mask_tsne.sum())
+    logger.info(f"🎯 t-SNE filtering flagged {num_flagged} cells (threshold {tsne_thresh})")
+
+    # Update filtering_status
+    to_update = mask_tsne & (adata.obs["filtering_status"] == "Unfiltered")
+    adata.obs.loc[to_update, "filtering_status"] = "bad tsne cluster"
+    logger.debug(f"🔄 Updated filtering_status for {to_update.sum()} newly flagged cells.")
+
+    return adata
     x_vals, y_vals = x[:, 0], x[:, 1]
 
     filtered_mask = adata.obs["filtering_status"] != "Unfiltered"
