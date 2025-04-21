@@ -144,6 +144,7 @@ def generate_segmentation_images(adata, fovs, density_dir, segmentation_dir, reg
                 if key in low: img[y,x]=(255,0,0)
                 elif key in reg: img[y,x]=(0,255,0)
                 elif key in drf: img[y,x]=(255,255,0)
+                else: img[y, x] = (255, 255, 255)
         plt.imsave(os.path.join(segmentation_dir,f"{fov}.png"), img)
     logger.info("Segmentation overlays done")
 
