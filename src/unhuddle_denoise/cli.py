@@ -121,7 +121,7 @@ def main():
         print(f"📄 Cell-level morphology metrics: {dirs['morph']}")
         print(f"📄 Raw/pre-normalization values: {args.output_base_path}\n")
 
-    # After running core UNHUDDLE pipeline and before adata_builder:
+    # optional: run fitsne local (implementation complex, only advanced users)
     if args.fitsne:
         fitsne(args)
 
