@@ -213,7 +213,18 @@ def generate_summary_tables(adata, qc_dir):
         for n,v in steps: d[n]=(sub==v).sum() if v else len(sub)
         fov_rows.append(d)
     pd.DataFrame(fov_rows).to_csv(os.path.join(qc_dir,'per_fov_stats.csv'),index=False)
-
+def print_success_guide(output_base_path):
+    """
+    Print user-friendly summary of QC outputs.
+    """
+    qc_dir, density_dir, seg_dir, sb_dir = create_directories(output_base_path)
+    print("🎉 QC pipeline completed successfully! Here are your outputs:")
+    print(f" - Density maps: {density_dir}")
+    print(f" - Segmentation overlays: {seg_dir}")
+    print(f" - Storyboards: {sb_dir}")
+    print(f" - DR QC plot: {os.path.join(qc_dir, 'dr_qc.png')}")
+    print(f" - Overall stats CSV: {os.path.join(qc_dir, 'overall_stats.csv')}")
+    print(f" - Per-FOV stats CSV: {os.path.join(qc_dir, 'per_fov_stats.csv')}")
 
 def run_qc_from_memory(args, adata):
     qc_dir,dens,seg,sb=create_directories(args.output_base_path)
@@ -246,7 +257,7 @@ def run_qc_from_memory(args, adata):
     adata.obs.loc[adata.obs['QC_low_intensity_filter'],'filtering_status']='low intensity cell'
 
     # DR filter
-    logger.info('🎲 DR filtering')
+    logger.info('🎲 Dimension Reduction (DR) based filtering')
     adata=perform_dr_filtering(adata,args.radius_DRfilter)
     dr_bad=int((adata.obs['QC_dr_based_filter']).sum())
     logger.info(f'🔧 Post-DR filter count: bad_dr_cluster={dr_bad}')
@@ -260,7 +271,7 @@ def run_qc_from_memory(args, adata):
     generate_storyboards(qc_dir,dens,seg,sb,list(region_map))
 
     # DR plot
-    logger.info('📈 DR plot')
+    logger.info('📈 Filtering results in DR plot')
     generate_dr_plot(adata,qc_dir)
 
     # summary
@@ -278,3 +289,4 @@ def run_qc_from_memory(args, adata):
     logger.info(f'💾 Saved QC-adata: {path}')
     print(f'✅ Saved QC-adata: {path}')
     del adata
+    print_success_guide(args.output_base_path)

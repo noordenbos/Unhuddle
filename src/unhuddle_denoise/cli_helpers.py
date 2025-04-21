@@ -8,13 +8,18 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import pandas as pd
 from tqdm import tqdm
 from datetime import datetime
+from typing import Optional
+
 
 
 _LOGGING_INITIALIZED = False
 
-def setup_logging(log_level: str) -> None:
+_LOGGING_INITIALIZED = False
+
+def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> None:
     """
-    Set up logging with the specified log level and enable detailed logging for key libraries when in DEBUG.
+    Set up logging with the specified log level.
+    Logs WARNING+ to console by default, and INFO+ to a file if output_base_path is provided.
     Prevents reinitialization across FOV loop calls.
     """
     global _LOGGING_INITIALIZED
@@ -37,6 +42,27 @@ def setup_logging(log_level: str) -> None:
         stream.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
         root.addHandler(stream)
     root.setLevel(level)
+    #save logging
+    if output_base_path:
+        log_dir = os.path.join(output_base_path, "logs")
+        os.makedirs(log_dir, exist_ok=True)
+        log_path = os.path.join(log_dir, f"unhuddle_run_{datetime.now():%Y%m%d_%H%M%S}.log")
+
+        file_handler = logging.FileHandler(log_path)
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+        root.addHandler(file_handler)
+
+        # === Log CLI call + environment summary ===
+        root.info("📝 CLI call:\n    " + " ".join(sys.argv))
+        root.info("🧪 Environment:")
+        root.info(f"    Platform: {platform.platform()}")
+        root.info(f"    Python version: {platform.python_version()}")
+        root.info(f"    Executable: {sys.executable}")
+        root.info(f"    CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'not set')}")
+        root.info(f"    NumPy version: {sys.modules.get('numpy', 'not loaded')}")
+        root.info(f"    Working directory: {os.getcwd()}")
+        root.info(f"📁 Full pipeline log will be saved to: {log_path}")
 
     # Propagate and configure all 'unhuddle.*' loggers
     for name in logging.root.manager.loggerDict:
@@ -75,7 +101,6 @@ def setup_logging(log_level: str) -> None:
         logger.debug("📡 Verbose logging enabled for Selenium and network libraries (matplotlib and PIL suppressed)")
 
     _LOGGING_INITIALIZED = True
-
 
 
 def parse_arguments() -> argparse.Namespace:

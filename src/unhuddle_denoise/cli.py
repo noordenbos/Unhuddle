@@ -30,7 +30,8 @@ def process_reallocation(fov, dirs, args):
 
 def main():
     args = parse_arguments()
-    setup_logging(args.log_level)
+    setup_logging(args.log_level, output_base_path=args.output_base_path)
+
 
     logger = logging.getLogger(__name__)
     logger.debug(f"Logger '{logger.name}' is active at level: {logging.getLevelName(logger.getEffectiveLevel())}")
