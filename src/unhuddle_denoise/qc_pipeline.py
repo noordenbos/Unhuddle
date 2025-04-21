@@ -140,6 +140,61 @@ def perform_tsne_filtering(adata, radius):
         logger.error("❌ Missing X_tsne in obsm; skipping t-SNE filtering.")
         return adata
     pts = np.asarray(coords)
+
+    # Prefilter mask
+    mask = adata.obs["filtering_status"] != "Unfiltered"
+    num_prefilter = int(mask.sum())
+    logger.debug(f"🧪 t-SNE filtering with BallTree: total={pts.shape[0]} pts, filtered mask sum={num_prefilter}")
+
+    # Build BallTrees
+    tree_all = BallTree(pts)
+    logger.debug("🌲 Built BallTree for all points")
+    if num_prefilter > 0:
+        pts_filt = pts[mask.values]
+        tree_filt = BallTree(pts_filt)
+        logger.debug(f"🌲 Built BallTree for {pts_filt.shape[0]} filtered points")
+    else:
+        tree_filt = None
+        logger.debug("⚠️ No filtered points; skipping filtered BallTree build")
+
+    # Count neighbors within radius
+    count_total = tree_all.query_radius(pts, r=radius, count_only=True)
+    logger.debug("⏱ Completed total neighbor counts")
+    if tree_filt is not None:
+        count_filtered = tree_filt.query_radius(pts, r=radius, count_only=True)
+        logger.debug("⏱ Completed filtered neighbor counts")
+    else:
+        count_filtered = np.zeros_like(count_total, dtype=int)
+
+    # Compute fraction safely
+    fraction = np.zeros_like(count_total, dtype=float)
+    nonzero = count_total > 0
+    fraction[nonzero] = count_filtered[nonzero] / count_total[nonzero]
+    adata.obs["QC_fraction_filtered"] = fraction
+    logger.debug(f"📊 QC_fraction_filtered: min={fraction.min():.4f}, max={fraction.max():.4f}")
+
+    # Flagging using threshold
+    thresh = 0.25
+    flag = fraction > thresh
+    # Check for excessive filtering
+    flagged_count = int(flag.sum())
+    total_cells = len(fraction)
+    flagged_fraction = flagged_count / total_cells if total_cells > 0 else 0
+    if flagged_fraction > 0.5:
+        raise ValueError(
+            f"❌ Too many cells flagged by t-SNE filter ({flagged_count}/{total_cells} = {flagged_fraction:.1%}). "
+            f"The radius ({radius}) may be too high."
+        )
+    adata.obs["QC_tsne_based_filter"] = flag
+    logger.info(f"🎯 t-SNE filtering flagged {int(flag.sum())} cells at threshold={thresh}")
+
+    # Update filtering_status
+    to_update = flag & (adata.obs["filtering_status"] == "Unfiltered")
+    adata.obs.loc[to_update, "filtering_status"] = "bad tsne cluster"
+    logger.debug(f"🔄 Updated status for {int(to_update.sum())} cells")
+
+    return adata
+    pts = np.asarray(coords)
     # Prefilter mask
     mask = adata.obs["filtering_status"] != "Unfiltered"
     logger.debug(f"🧪 t-SNE filtering with BallTree: total={pts.shape[0]} pts, filtered mask sum={mask.sum()}")
