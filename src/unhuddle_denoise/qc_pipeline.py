@@ -184,7 +184,7 @@ def perform_tsne_filtering(adata, radius):
     pts = np.asarray(coords)
 
     # Prefilter mask (use QC flags, not filtering_status)
-    mask = adata.obs.get("QC_low_intensity_filter", False) | adata.obs.get("QC_filter_low_quality_region", False)
+    mask = adata.obs.get("QC_low_intensity_filter", True) | adata.obs.get("QC_filter_low_quality_region", True)
     num_prefilter = int(mask.sum())
     logger.debug(f"🔍 Prefilter mask sum (intensity or region): {num_prefilter}")(
         f"🧪 t-SNE filtering with BallTree: total={pts.shape[0]} pts, filtered mask sum={num_prefilter}")
