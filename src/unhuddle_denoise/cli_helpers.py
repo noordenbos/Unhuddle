@@ -462,10 +462,10 @@ def create_adata(args: argparse.Namespace) -> None:
         adata.uns["dr_source"] = f"external::{dr_method}"
 
         logging.info(f"✅ Stored external DR coordinates in adata.obsm['{obsm_key}']")
-
+    run_qc_pipeline(args, adata)
     return adata
 
-    run_qc_pipeline(args, adata)
+
 
 
 
