@@ -150,7 +150,7 @@ def parse_arguments() -> argparse.Namespace:
                         help="Minimum total intensity to retain a cell (default: 10)")
     parser.add_argument("--qc_density_threshold", type=int, default=550,
                         help="Threshold for density map filtering (default: 550)")
-    parser.add_argument("--plot_density_scale", type=int, nargs=2, default=[0, 800],
+    parser.add_argument("--qc_plot_density_scale", type=int, nargs=2, default=[0, 800],
                         help="Value range for density map visualization (default: 0 800)")
     parser.add_argument("--radius_DRfilter", type=float, default=15.0,
                         help="Neighborhood radius for dimension reduction based filtering (default: 15.0)")

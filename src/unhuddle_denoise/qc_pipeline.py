@@ -401,7 +401,7 @@ def run_qc_from_memory(args, adata):
         stride=args.qc_stride,
         density_threshold=args.qc_density_threshold,
         region_threshold=args.qc_region_threshold,
-        density_scale=tuple(args.qc_density_scale),
+        density_scale=tuple(args.qc_plot_density_scale),
     )
 
     # Mark "bad" cells as low-density if not in region_cells_by_fov
