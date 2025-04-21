@@ -567,20 +567,6 @@ def run_qc_from_memory(args, adata):
     # Step 3: Initialize status
     adata.obs["filtering_status"] = "Unfiltered"
 
-    # Step 4: Density filtering
-    logger.info("🔍 Density QC starting")
-    adata, region_map = perform_density_filtering(
-        adata, qc_out, dens_dir,
-        window_size=args.qc_window_size,
-        stride=args.qc_stride,
-        density_threshold=args.qc_density_threshold,
-        region_threshold=args.qc_region_threshold,
-        density_scale=tuple(args.qc_plot_density_scale)
-    )
-    adata.obs["QC_filter_low_quality_region"] = ~adata.obs_names.isin(set().union(*region_map.values()))
-    logger.info("🔍 Density QC completed")
-
-    # Step 5: Optional t-SNE filtering
     if tsne_avail:
         logger.info("🎲 Running t-SNE based filtering")
         adata = perform_tsne_filtering(adata, args.radius_DRfilter)
