@@ -9,6 +9,16 @@ from collections import defaultdict
 from PIL import Image
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor
+import numpy as np
+import pandas as pd
+import logging
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+from sklearn.linear_model import LinearRegression
+from collections import defaultdict
+from PIL import Image
+from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
 import logging
 
 logger = logging.getLogger(__name__)
@@ -138,15 +148,15 @@ def perform_tsne_filtering(adata, radius):
 
 def generate_segmentation_images(adata, fovs, density_dir, segmentation_dir, region_cells_by_fov):
     """
-    Parallel rendering of segmentation overlays with progress bar.
+    Parallel rendering of segmentation overlays with progress bar using multiple processes.
     """
     os.makedirs(segmentation_dir, exist_ok=True)
 
     def render(fov):
         spatial = adata.uns.get("spatial", {}).get(fov, {})
         if "segmentation" not in spatial:
-            logger.warning(f"⚠️ Skipping {fov} – no seg mask.")
-            return
+            logger.warning(f"⚠️ Skipping {fov} – no segmentation mask.")
+            return None
 
         seg_mask = spatial["segmentation"]
         H, W = seg_mask.shape
@@ -159,7 +169,8 @@ def generate_segmentation_images(adata, fovs, density_dir, segmentation_dir, reg
         for y in range(H):
             for x in range(W):
                 lab = seg_mask[y, x]
-                if not lab: continue
+                if lab == 0:
+                    continue
                 key = f"{fov}_{lab}"
                 if key in low:
                     img[y, x] = (255, 0, 0)
@@ -175,9 +186,10 @@ def generate_segmentation_images(adata, fovs, density_dir, segmentation_dir, reg
         return fov
 
     # parallel map with progress bar
-    with ThreadPoolExecutor(max_workers=min(8, len(fovs))) as pool:
-        list(tqdm(pool.map(render, fovs), total=len(fovs), desc="🎨 Segmentation QC"))
-
+    from concurrent.futures import ProcessPoolExecutor
+    max_workers = min(os.cpu_count() or 1, len(fovs))
+    with ProcessPoolExecutor(max_workers=max_workers) as pool:
+        list(tqdm(pool.map(render, fovs), total=len(fovs), desc="🎨 Segmentation QC", unit="FOV"))
 
 def create_storyboard(image_paths, output_path, cols=10, max_storyboard_width=10000, ppi=70):
     if not image_paths:
@@ -257,27 +269,36 @@ def generate_summary_tables(adata, qc_output_dir):
 
 def run_qc_from_memory(args, adata):
     qc_out, dens_dir, seg_dir, sb_dir = create_directories(args.output_base_path)
+    logger.info("🚀 Running QC filtering pipeline ...")
 
-    # Step 1
+    # Step 1: Low-intensity filter
     tot = adata.layers["sum_unhuddle"].sum(axis=1)
-    adata.obs["total_intensity"] = np.array(tot).flatten()
+    adata.obs["total_intensity"] = np.asarray(tot).flatten()
     adata.obs["QC_low_intensity_filter"] = adata.obs["total_intensity"] < args.low_intensity_threshold
 
-    # Step 2: t-SNE coords (same as before)
+    # Step 2: t-SNE / DR coords
+    logger.info("🔄 Loading t-SNE / external DR coordinates ...")
     tsne_dir = os.path.join(args.output_base_path, "fitsne_coords")
     tsne_avail = False
     if "X_tsne" in adata.obsm:
+        logger.info("✅ Preloaded t-SNE found")
         tsne_avail = True
     elif "X_external_dr" in adata.obsm:
         adata.obsm["X_tsne"] = adata.obsm["X_external_dr"]
+        logger.info("🔄 External DR used as t-SNE coords")
         tsne_avail = True
     elif os.path.isdir(tsne_dir) and os.listdir(tsne_dir):
         adata = load_dimension_reduction_coords(tsne_dir, adata, args.coord_cols)
+        logger.info("✅ Loaded DR coords from disk")
         tsne_avail = True
+    else:
+        logger.info("⚠️ No DR coords found; skipping t-SNE filtering")
 
+    # Step 3: Initialize status
     adata.obs["filtering_status"] = "Unfiltered"
 
-    # Step 4
+    # Step 4: Density filtering
+    logger.info("🔍 Density QC starting")
     adata, region_map = perform_density_filtering(
         adata, qc_out, dens_dir,
         window_size=args.qc_window_size,
@@ -286,29 +307,46 @@ def run_qc_from_memory(args, adata):
         region_threshold=args.qc_region_threshold,
         density_scale=tuple(args.qc_plot_density_scale)
     )
-    adata.obs["QC_filter_low_quality_region"] = ~adata.obs_names.isin(
-        set().union(*region_map.values())
-    )
+    adata.obs["QC_filter_low_quality_region"] = ~adata.obs_names.isin(set().union(*region_map.values()))
+    logger.info("🔍 Density QC completed")
 
-    # Step 5
+    # Step 5: Optional t-SNE filtering
     if tsne_avail:
+        logger.info("🎲 Running t-SNE based filtering")
         adata = perform_tsne_filtering(adata, args.radius_DRfilter)
+        logger.info("🎲 t-SNE filtering completed")
 
-    # Step 6 Labels
+    # Step 6: Label filtering status
     adata.obs.loc[adata.obs["QC_filter_low_quality_region"], "filtering_status"] = "low quality region"
     adata.obs.loc[adata.obs["QC_low_intensity_filter"], "filtering_status"] = "low intensity cell"
 
-    # Step 7
-    fovs = list(region_map.keys())
-    generate_segmentation_images(adata, fovs, dens_dir, seg_dir, region_map)
-    generate_storyboards(qc_out, dens_dir, seg_dir, sb_dir, fovs)
-    if tsne_avail:
-        generate_tsne_plot(adata, qc_out)
-    generate_summary_tables(adata, qc_out)
+        # Step 7: Segmentation overlays (parallelized)
+    logger.info("🎨 Generating segmentation overlays in parallel...")
+    generate_segmentation_images(adata, list(region_map.keys()), dens_dir, seg_dir, region_map)
+    logger.info("🎨 Segmentation overlays completed")
 
-    # Step 8 & 9
+    # Step 8: Create storyboards
+    logger.info("📚 Creating storyboards")
+    generate_storyboards(qc_out, dens_dir, seg_dir, sb_dir, list(region_map.keys()))
+    logger.info("📚 Storyboards created")
+
+    # Step 9: Optional t-SNE plot
+    if tsne_avail:
+        logger.info("📈 Rendering t-SNE QC plot")
+        generate_tsne_plot(adata, qc_out)
+        logger.info("📈 t-SNE QC plot done")
+
+    # Step 10: Summary tables
+    logger.info("📊 Generating summary tables")
+    generate_summary_tables(adata, qc_out)
+    logger.info("📊 Summary tables written")
+
+    # Final: Apply filtering and save
+    logger.info("💾 Saving filtered AnnData")
     keep = ~(adata.obs["QC_low_intensity_filter"] | adata.obs["QC_filter_low_quality_region"])
     adata = adata[keep].copy()
     out_path = os.path.join(args.output_base_path, "adata_objects", "adata1.h5ad")
     adata.write_h5ad(out_path)
+    logger.info(f"💾 QC-completed AnnData saved to: {out_path}")
     print(f"✅ QC-completed AnnData saved to: {out_path}")
+    del adata
