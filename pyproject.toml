@@ -20,7 +20,8 @@ dependencies = [
   "requests",
   "anndata",
   "matplotlib",
-  "scikit-learn"
+  "scikit-learn",
+  "seaborn"
 ]
 
 [build-system]
