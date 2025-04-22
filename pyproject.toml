@@ -24,7 +24,7 @@ dependencies = [
 ]
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel", "cython", "numpy"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -43,6 +43,9 @@ dev = [
   "flake8",
   "isort"
 ]
+fitsne = ["fitsne>=1.0.0", "cython"]
+
+
 
 [tool.black]
 line-length = 100

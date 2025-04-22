@@ -361,6 +361,78 @@ def plot_intensity_distribution(adata, qc_dir, low_intensity_threshold):
     plt.savefig(out_path, dpi=150)
     plt.close()
 
+def generate_cohort_normalization_qc(
+    adata,
+    var_names=None,
+    layer_weighted="sum_unhuddle_denoised",
+    layer_area="sum_original",
+    layer_raw="sum_unhuddle",
+    output_dir="qc_dir"
+):
+    import os
+    import numpy as np
+    import pandas as pd
+
+    from .qc_plot_normalization_comparison import (
+        plot_sensor_marker_counts,
+        plot_intensity_compression,
+        plot_marker_correlation_heatmaps,
+        plot_marker_distribution_storyboard
+    )
+
+    os.makedirs(output_dir, exist_ok=True)
+    if var_names is None:
+        var_names = adata.var_names.tolist()
+    marker_subset = var_names[:6]  # Select subset to visualize
+
+    logger.info("📊 Generating cohort-level normalization QC")
+
+    # ── Extract layers as DataFrames ─────────────────────────────────────────────
+    mat_raw = adata.layers[layer_raw]
+    mat_weighted = adata.layers[layer_weighted]
+    mat_area = adata.layers[layer_area] / np.clip(adata.obs["Area"].values[:, None], 1e-5, None)
+
+    raw_df = pd.DataFrame(mat_raw, columns=var_names)
+    weighted_df = pd.DataFrame(mat_weighted, columns=var_names)
+    area_df = pd.DataFrame(mat_area, columns=var_names)
+
+    # ── Compute marker counts per cell ───────────────────────────────────────────
+    marker_counts = (mat_weighted != 0).sum(axis=1)
+
+    # ── Plot 1: Sensor marker counts ─────────────────────────────────────────────
+    plot_sensor_marker_counts(
+        marker_counts=marker_counts,
+        output_path=os.path.join(output_dir, "cohort_sensor_marker_counts.png")
+    )
+
+    # ── Plot 2: Intensity compression ────────────────────────────────────────────
+    plot_intensity_compression(
+        raw_df=raw_df,
+        norm_df_weighted=weighted_df,
+        norm_df_area=area_df,
+        marker_subset=marker_subset,
+        output_path=os.path.join(output_dir, "cohort_intensity_compression.png")
+    )
+
+    # ── Plot 3: Correlation heatmaps ─────────────────────────────────────────────
+    plot_marker_correlation_heatmaps(
+        raw_df=raw_df,
+        norm_df_weighted=weighted_df,
+        norm_df_area=area_df,
+        marker_subset=marker_subset,
+        output_path=os.path.join(output_dir, "cohort_marker_correlation.png")
+    )
+
+    # ── Plot 4: Marker distribution storyboard ───────────────────────────────────
+    plot_marker_distribution_storyboard(
+        raw_df=raw_df,
+        norm_df_weighted=weighted_df,
+        norm_df_area=area_df,
+        marker_subset=marker_subset,
+        output_path=os.path.join(output_dir, "cohort_marker_distributions_storyboard.png")
+    )
+
+    logger.info("✅ Cohort-level normalization QC complete")
 
 def run_qc_from_memory(args, adata):
     qc_dir, dens, seg, sb = create_directories(args.output_base_path)
@@ -415,6 +487,13 @@ def run_qc_from_memory(args, adata):
     # ── 6. Storyboards ────────────────────────────────────────────────────────────
     logger.info('📚 Storyboards')
     generate_storyboards(qc_dir, dens, seg, sb, list(region_map))
+    # ── 6.5 Cohort-Level Normalization QC ───────────────────────────────────────────
+    logger.info('📊 Cohort-level normalization QC')
+    generate_cohort_normalization_qc(
+        adata,
+        var_names=adata.var_names.tolist(),
+        output_dir=qc_dir
+    )
 
     # ── 7. DR Plot ────────────────────────────────────────────────────────────────
     logger.info('📈 Filtering results in Dimension Reduction plot')
