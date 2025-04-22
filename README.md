@@ -1,8 +1,11 @@
+<h2>
+  UNHUDDLE
+  <img src="assets/images/logo.png" alt="logo" width="90" align="left"/>
+</h2>
 
-## UNHUDDLE
 **Uncovering Neighborhood Heterogeneity Using Deterministic Normalization and Local Equilibrium**
 
-UNHUDDLE is an algorithm designed to resolve signal in densely packed tissue regions — or "cell huddles" — in multiplex spatial proteomics, where traditional absolute segmentation introduces 'neighbor noise' and blur the phenotypic signal.
+<br>UNHUDDLE is an algorithm designed to resolve signal in densely packed tissue regions — or "cell huddles" — in multiplex spatial proteomics, where traditional absolute segmentation introduces 'neighbor noise' and blur the phenotypic signal.
 
 On the cell to cell borderpixels, shared signal is observed due to 1 resolution issues, 2 lateral bleed and 3 z-projection. Unhuddle knows the cell's neighbors, measures their mean intensity and reallocates the bordersignal to the rightful owner. 
 
@@ -14,23 +17,23 @@ By identifying stable, broadly expressed "normalisation markers" and performing 
 via https
 ```bash
 git clone https://github.com/tbee05/unhuddle_denoise.git
-cd unhuddle
+cd unhuddle_denoise
 ```
 via ssh
 ```bash
 git clone git@github.com:tbee05/unhuddle_denoise.git
-cd unhuddle
+cd unhuddle_denoise
 ```
 ### 📦 2. Set Up a Virtual Environment
 Using venv:
 ```bash
-python -m venv unhuddle_denoise
-source unhuddle/bin/activate      # On Windows: unhuddle\Scripts\activate
+python -m venv unhuddle-denoise
+source unhuddle-denoise/bin/activate      # On Windows: unhuddle\Scripts\activate
 ```
 or conda:
 ```bash
-conda create -n unhuddle_denoise -y
-conda activate unhuddle_denoise
+conda create -n unhuddle-denoise -y
+conda activate unhuddle-denoise
 conda install pip
 ```
 ### 🛠️ 3. Install UNHUDDLE in Editable Mode
@@ -61,14 +64,14 @@ base_path/
 ```
 Each FOV folder should contain:
 - Denoised marker images (`{marker}.ome.tiff`, shape: `H x W`, dtype: `float32/64`)
-- Optionally: a segmentation mask (`*_mask_0.tiff`, shape:   `H x W` or `Z x H x W`, dtype: `uint16`)  
+- Optionally: a segmentation mask (`*.tiff`, shape:   `H x W` or `Z x H x W`, dtype: `uint16`) NB do not use *ome.tiff for the mask
   If a mask is not provided, one can be generated using `--create_deepcell_mask`.
 
 🎯**protip:**  
 contain the patientID in the FOV-name: "{patientID}_{FOVnumber}".  
 NB do not use underscores within patientID or FOVnumber.
  
-example for the first fov of patient 23:
+example for the first fov of **P**atient **23**:
 ```
 base_path/
 ├── P23_1/
