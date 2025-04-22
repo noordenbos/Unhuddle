@@ -351,8 +351,8 @@ def plot_intensity_distribution(adata, qc_dir, low_intensity_threshold):
     axes[1].hist(data, bins=100, color='lightgray', edgecolor='black')
     axes[1].axvline(low_intensity_threshold, color='red', linestyle='--', linewidth=2)
     axes[1].text(low_intensity_threshold + (data.max() * 0.01), axes[1].get_ylim()[1] * 0.9,
-                 f"value --low_intensity_threshold = {low_intensity_threshold}",
-                 color='red', rotation=90, va='top', ha='left', fontsize=10)
+                 f"--low_intensity_threshold = {low_intensity_threshold}",
+                 color='red', va='top', ha='left', fontsize=8)
     axes[1].set_title("Summed Intensity (Full Range)")
 
     plt.tight_layout()
