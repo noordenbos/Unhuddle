@@ -118,7 +118,7 @@ def run_denoising_pipeline_on_dataframe(
         density_quantile: float = 0.1,
         min_cells_per_bin: int = 10,
         min_area: float = 15,
-        store_metadata: bool = False,
+        store_metadata: bool = True,
 ) -> pd.DataFrame:
     """
     Adds denoised values for each marker into a DataFrame based on signal/noise cone fitting.

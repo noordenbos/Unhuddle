@@ -90,39 +90,63 @@ def perform_density_filtering(
     return adata, region_map
 
 
+from scipy.spatial import cKDTree
+import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def perform_dr_filtering(adata, radius, good_frac=0.75):
     """
     Generic DR-based neighborhood filtering.
     """
-    # find DR key
-    dr_key = next((k for k in adata.obsm if k.startswith('X_') and k!='X_spatial'), None)
+    # Find dimensionality reduction key, excluding spatial
+    dr_key = next((k for k in adata.obsm if k.startswith('X_') and k != 'X_spatial'), None)
+
     if dr_key is None:
-        logger.error("No DR embedding found, skipping.")
-        return adata
-    logger.info(f"🔧 Using DR embedding: {dr_key}")
-    pts = adata.obsm[dr_key]
-    logger.debug(f"DR filter on {pts.shape[0]} cells with radius={radius}")
-    good = adata.obs['filtering_status']=='Unfiltered'
-    tree_all = cKDTree(pts)
-    pts_good = pts[good.values]
-    if pts_good.size==0:
-        adata.obs['QC_fraction_filtered'] = 1.
+        logger.warning("⚠️ No DR embedding found in .obsm (e.g., X_tsne, X_umap). Skipping DR filtering.")
+        adata.obs['QC_fraction_filtered'] = np.nan
         adata.obs['QC_dr_based_filter'] = False
         return adata
+
+    logger.info(f"🔧 Using DR embedding: {dr_key}")
+    pts = adata.obsm[dr_key]
+
+    if pts.shape[0] != adata.n_obs:
+        logger.error("❌ DR coordinate shape does not match number of cells in AnnData.")
+        raise ValueError(f"DR shape mismatch: DR coords have {pts.shape[0]}, adata has {adata.n_obs} cells")
+
+    logger.debug(f"DR filter on {pts.shape[0]} cells with radius={radius}")
+    good = adata.obs['filtering_status'] == 'Unfiltered'
+    tree_all = cKDTree(pts)
+    pts_good = pts[good.values]
+
+    if pts_good.size == 0:
+        logger.warning("⚠️ No 'Unfiltered' cells found for DR-based filtering.")
+        adata.obs['QC_fraction_filtered'] = 1.0
+        adata.obs['QC_dr_based_filter'] = False
+        return adata
+
     tree_good = cKDTree(pts_good)
-    # neighbors
+
     tot = np.array([len(n) for n in tree_all.query_ball_point(pts, r=radius)])
-    ok  = np.array([len(n) for n in tree_good.query_ball_point(pts, r=radius)])
-    frac = np.zeros_like(tot, float)
-    valid = tot>0
-    frac[valid] = ok[valid]/tot[valid]
+    ok = np.array([len(n) for n in tree_good.query_ball_point(pts, r=radius)])
+
+    frac = np.zeros_like(tot, dtype=float)
+    valid = tot > 0
+    frac[valid] = ok[valid] / tot[valid]
+
     adata.obs['QC_fraction_filtered'] = frac
-    flag = frac<good_frac
+    flag = frac < good_frac
     adata.obs['QC_dr_based_filter'] = flag
+
     msg = int(flag.sum())
-    logger.info(f"🎯 DR filtering flagged {msg}/{len(frac)} bad DR cells (frac < {good_frac})")
-    idx = flag & (adata.obs['filtering_status']=='Unfiltered')
-    adata.obs.loc[idx,'filtering_status']='bad dr cluster'
+    logger.info(f"🎯 DR filtering flagged {msg}/{len(frac)} cells (frac < {good_frac})")
+
+    idx = flag & (adata.obs['filtering_status'] == 'Unfiltered')
+    adata.obs.loc[idx, 'filtering_status'] = 'bad dr cluster'
+
     return adata
 
 
@@ -165,134 +189,223 @@ def generate_storyboards(qc_dir, dens_dir, seg_dir, sb_dir, fovs):
     if dens: create_storyboard(dens,os.path.join(sb_dir,'density_storyboard.png'))
 
 
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 def generate_dr_plot(adata, qc_dir):
-    dr_key = next((k for k in adata.obsm if k.startswith('X_') and k!='X_spatial'),None)
-    if dr_key is None: return
-    coords=adata.obsm[dr_key]
-    status=adata.obs['filtering_status']
-    colors=np.full(len(coords), 'lightgray', object)
-    colors[status=='low intensity cell']='red'
-    colors[status=='low quality region']='green'
-    colors[status=='bad dr cluster']='yellow'
-    fig,ax=plt.subplots(figsize=(6,5))
-    ax.scatter(coords[:,0],coords[:,1],c=colors, s=1, alpha=0.6)
+    # Look for any DR embedding other than X_spatial
+    dr_key = next((k for k in adata.obsm if k.startswith('X_') and k != 'X_spatial'), None)
+
+    if dr_key is None:
+        logger.warning("⚠️ No DR embedding found in .obsm. Skipping DR plot.")
+        return
+
+    coords = adata.obsm[dr_key]
+    if coords.shape[0] != adata.n_obs:
+        logger.error(f"❌ DR coords shape mismatch: {coords.shape[0]} rows vs {adata.n_obs} obs.")
+        return
+
+    if 'filtering_status' not in adata.obs.columns:
+        logger.warning("⚠️ 'filtering_status' not found in obs. Cannot generate DR plot.")
+        return
+
+    status = adata.obs['filtering_status'].values
+    colors = np.full(len(coords), 'lightgray', dtype=object)
+    colors[status == 'low intensity cell'] = 'red'
+    colors[status == 'low quality region'] = 'green'
+    colors[status == 'bad dr cluster'] = 'yellow'
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.scatter(coords[:, 0], coords[:, 1], c=colors, s=1, alpha=0.6)
+
     ax.set_title(f"Filtering Results after Dimension Reduction ({dr_key})")
     ax.set_xlabel(f"{dr_key} 1")
     ax.set_ylabel(f"{dr_key} 2")
+
+    legend_handles = [
+        plt.Line2D([], [], marker='o', color='w', markerfacecolor=color, label=label, markersize=10)
+        for label, color in [
+            ('Low Intensity Cell', 'red'),
+            ('Low Quality Region', 'green'),
+            ('Bad DR Cluster', 'yellow'),
+            ('Unfiltered', 'lightgray')
+        ]
+    ]
     ax.legend(
-        handles=[
-            plt.Line2D([], [], marker='o', color='w', markerfacecolor=c, label=l, markersize=10)
-            for l, c in [
-                ('Low Intensity Cell', 'red'),
-                ('Low Quality Region', 'green'),
-                ('Bad DR Cluster', 'yellow'),
-                ('Unfiltered', 'lightgray')
-            ]
-        ],
+        handles=legend_handles,
         title='Filter',
         loc='upper right',
-        markerscale=0.5,  # Shrinks marker size
-        fontsize='x-small',  # Shrinks label text
-        title_fontsize='small'  # Shrinks title
+        markerscale=0.5,
+        fontsize='x-small',
+        title_fontsize='small'
     )
-    plt.savefig(os.path.join(qc_dir,'dr_qc.png'),dpi=200,bbox_inches='tight')
-    plt.close()
 
+    os.makedirs(qc_dir, exist_ok=True)
+    out_path = os.path.join(qc_dir, 'dr_qc.png')
+    plt.savefig(out_path, dpi=200, bbox_inches='tight')
+    plt.close()
+    logger.info(f"🖼️ DR QC plot saved to: {out_path}")
+
+
+import os
+import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 
 def generate_summary_tables(adata, qc_dir):
-    total=len(adata.obs)
-    status=adata.obs['filtering_status']
-    steps=[('Total',None),('Low Intensity','low intensity cell'),('Low Quality','low quality region'),('Bad DR','bad dr cluster')]
-    rows=[{'Filter Step':n,'Count':(status==v).sum() if v else total,'Percent':((status==v).sum()/total*100) if v else 100}
-          for n,v in steps]
-    pd.DataFrame(rows).to_csv(os.path.join(qc_dir,'overall_stats.csv'),index=False)
-    fov_list=adata.obs['fov'].unique()
-    fov_rows=[]
-    for fov in fov_list:
-        sub=status[adata.obs['fov']==fov]
-        d={'FOV':fov}
-        for n,v in steps: d[n]=(sub==v).sum() if v else len(sub)
-        fov_rows.append(d)
-    pd.DataFrame(fov_rows).to_csv(os.path.join(qc_dir,'per_fov_stats.csv'),index=False)
+    if 'filtering_status' not in adata.obs.columns:
+        logger.warning("⚠️ 'filtering_status' missing in AnnData. Skipping summary table generation.")
+        return
+
+    os.makedirs(qc_dir, exist_ok=True)
+
+    status = adata.obs['filtering_status']
+    total = len(status)
+
+    steps = [
+        ('Total', None),
+        ('Low Intensity', 'low intensity cell'),
+        ('Low Quality', 'low quality region'),
+        ('Bad DR', 'bad dr cluster')
+    ]
+
+    rows = [
+        {
+            'Filter Step': name,
+            'Count': (status == val).sum() if val else total,
+            'Percent': ((status == val).sum() / total * 100) if val else 100.0
+        }
+        for name, val in steps
+    ]
+
+    overall_path = os.path.join(qc_dir, 'overall_stats.csv')
+    pd.DataFrame(rows).to_csv(overall_path, index=False)
+    logger.info(f"📄 Wrote overall filtering stats to: {overall_path}")
+
+    # Per-FOV stats
+    if 'fov' not in adata.obs.columns:
+        logger.warning("⚠️ 'fov' not found in obs. Skipping per-FOV stats.")
+        return
+
+    fov_rows = []
+    for fov in adata.obs['fov'].unique():
+        sub = status[adata.obs['fov'] == fov]
+        row = {'FOV': fov}
+        for name, val in steps:
+            row[name] = (sub == val).sum() if val else len(sub)
+        fov_rows.append(row)
+
+    per_fov_path = os.path.join(qc_dir, 'per_fov_stats.csv')
+    pd.DataFrame(fov_rows).to_csv(per_fov_path, index=False)
+    logger.info(f"📄 Wrote per-FOV filtering stats to: {per_fov_path}")
+
 def print_success_guide(output_base_path):
     """
     Print user-friendly summary of QC outputs.
     """
     qc_dir, density_dir, seg_dir, sb_dir = create_directories(output_base_path)
     print("🎉 QC pipeline completed successfully! Here are your outputs:")
-    print(f" - Density maps: {density_dir}")
-    print(f" - Segmentation overlays: {seg_dir}")
-    print(f" - Storyboards: {sb_dir}")
-    print(f" - DR QC plot: {os.path.join(qc_dir, 'dr_qc.png')}")
-    print(f" - Overall stats CSV: {os.path.join(qc_dir, 'overall_stats.csv')}")
-    print(f" - Per-FOV stats CSV: {os.path.join(qc_dir, 'per_fov_stats.csv')}")
+    print(f" - Density maps:           {density_dir}")
+    print(f" - Segmentation overlays:  {seg_dir}")
+    print(f" - Storyboards:            {sb_dir}")
+
+    # Print conditionally if DR filtering was performed
+    dr_plot = os.path.join(qc_dir, 'dr_qc.png')
+    if os.path.exists(dr_plot):
+        print(f" - DR QC plot:             {dr_plot}")
+
+    overall_stats = os.path.join(qc_dir, 'overall_stats.csv')
+    if os.path.exists(overall_stats):
+        print(f" - Overall stats CSV:      {overall_stats}")
+
+    per_fov_stats = os.path.join(qc_dir, 'per_fov_stats.csv')
+    if os.path.exists(per_fov_stats):
+        print(f" - Per-FOV stats CSV:      {per_fov_stats}")
+
 
 def run_qc_from_memory(args, adata):
-    qc_dir,dens,seg,sb=create_directories(args.output_base_path)
+    qc_dir, dens, seg, sb = create_directories(args.output_base_path)
     logger.debug('🚀 Running QC pipeline')
-    logger.info(f'🔧 Low-intensity threshold={args.low_intensity_threshold}')
-    logger.info(f'🔧 Density window={args.qc_window_size},stride={args.qc_stride}')
-    logger.info(f'🔧 Density thresh={args.qc_density_threshold},region={args.qc_region_threshold}')
-    logger.info(f'🔧 DR radius={args.radius_DRfilter}')
+    logger.info(f'🔧 Low-intensity threshold = {args.low_intensity_threshold}')
+    logger.info(f'🔧 Density window = {args.qc_window_size}, stride = {args.qc_stride}')
+    logger.info(f'🔧 Density threshold = {args.qc_density_threshold}, region threshold = {args.qc_region_threshold}')
+    logger.info(f'🔧 DR radius = {args.radius_DRfilter}')
 
-    # intensity filter
-    tot=adata.layers['sum_unhuddle'].sum(axis=1)
-    adata.obs['total_intensity']=tot
-    adata.obs['QC_low_intensity_filter']=tot<args.low_intensity_threshold
-    low_count=int((adata.obs['QC_low_intensity_filter']).sum())
+    # ── 1. Intensity Filter ───────────────────────────────────────────────────────
+    if 'sum_unhuddle' not in adata.layers:
+        logger.error("❌ Missing 'sum_unhuddle' layer in AnnData. Cannot compute total intensity.")
+        raise ValueError("Missing layer: 'sum_unhuddle'")
 
-    # density
+    tot = adata.layers['sum_unhuddle'].sum(axis=1)
+    adata.obs['total_intensity'] = tot
+    adata.obs['QC_low_intensity_filter'] = tot < args.low_intensity_threshold
+    low_count = int(adata.obs['QC_low_intensity_filter'].sum())
+
+    # ── 2. Density-Based Region Filter ────────────────────────────────────────────
     logger.debug('🔍 Density QC')
-    adata,region_map=perform_density_filtering(
-        adata,qc_dir,dens,
-        window_size=args.qc_window_size,stride=args.qc_stride,
-        density_threshold=args.qc_density_threshold,region_threshold=args.qc_region_threshold,
+    adata, region_map = perform_density_filtering(
+        adata, qc_dir, dens,
+        window_size=args.qc_window_size,
+        stride=args.qc_stride,
+        density_threshold=args.qc_density_threshold,
+        region_threshold=args.qc_region_threshold,
         density_scale=tuple(args.qc_plot_density_scale)
     )
-    region_count=int((adata.obs['QC_filter_low_quality_region']).sum())
+    region_count = int(adata.obs['QC_filter_low_quality_region'].sum())
     logger.info(f'🔧 Post-density filter counts: low_intensity={low_count}, low_quality_region={region_count}')
 
-    # status init
-    adata.obs['filtering_status']='Unfiltered'
-    adata.obs.loc[adata.obs['QC_filter_low_quality_region'],'filtering_status']='low quality region'
-    adata.obs.loc[adata.obs['QC_low_intensity_filter'],'filtering_status']='low intensity cell'
+    # ── 3. Init Filtering Status ──────────────────────────────────────────────────
+    adata.obs['filtering_status'] = 'Unfiltered'
+    adata.obs.loc[adata.obs['QC_filter_low_quality_region'], 'filtering_status'] = 'low quality region'
+    adata.obs.loc[adata.obs['QC_low_intensity_filter'], 'filtering_status'] = 'low intensity cell'
 
-    # DR filter
+    # ── 4. DR-Based Filter ────────────────────────────────────────────────────────
     logger.info('🎲 Dimension Reduction (DR) based filtering')
-    adata=perform_dr_filtering(adata,args.radius_DRfilter)
-    dr_bad=int((adata.obs['QC_dr_based_filter']).sum())
-    logger.info(f'🔧 Post-DR filter count: bad_dr_cluster={dr_bad}')
+    adata = perform_dr_filtering(adata, args.radius_DRfilter)
+    if 'QC_dr_based_filter' in adata.obs:
+        dr_bad = int(adata.obs['QC_dr_based_filter'].sum())
+        logger.info(f'🔧 Post-DR filter count: bad_dr_cluster = {dr_bad}')
+    else:
+        logger.warning("⚠️ DR-based filtering skipped or failed — no 'QC_dr_based_filter' in obs.")
 
-    # segmentation
+    # ── 5. Segmentation Overlays ──────────────────────────────────────────────────
     logger.info('🎨 Segmentation overlays')
-    generate_segmentation_images(adata,list(region_map),dens,seg,region_map)
+    generate_segmentation_images(adata, list(region_map), dens, seg, region_map)
 
-    # storyboards
+    # ── 6. Storyboards ────────────────────────────────────────────────────────────
     logger.info('📚 Storyboards')
-    generate_storyboards(qc_dir,dens,seg,sb,list(region_map))
+    generate_storyboards(qc_dir, dens, seg, sb, list(region_map))
 
-    # DR plot
+    # ── 7. DR Plot ────────────────────────────────────────────────────────────────
     logger.info('📈 Filtering results in Dimension Reduction plot')
-    generate_dr_plot(adata,qc_dir)
+    generate_dr_plot(adata, qc_dir)
 
-    # summary
+    # ── 8. Summary Tables ─────────────────────────────────────────────────────────
     logger.info('📊 Summaries')
-    generate_summary_tables(adata,qc_dir)
+    generate_summary_tables(adata, qc_dir)
 
-    # final save
+    # ── 9. Final Keep Flag + Save ─────────────────────────────────────────────────
     logger.info('💾 Save flagged full AnnData (no cells removed)')
-    keep = ~(adata.obs['QC_low_intensity_filter'] | adata.obs['QC_filter_low_quality_region'])
+    keep = ~(adata.obs.get('QC_low_intensity_filter', False) | adata.obs.get('QC_filter_low_quality_region', False))
+    adata.obs['QC_final_keep'] = keep.astype(bool)
+
     kept_count = int(keep.sum())
-    logger.info(f'🔧 Final cells flagged: retained={kept_count}/{adata.n_obs}')
+    logger.info(f'🔧 Final cells flagged: retained = {kept_count} / {adata.n_obs}')
 
-    adata.obs['QC_final_keep'] = keep
-    adata.obs['QC_final_keep'] = adata.obs['QC_final_keep'].astype(bool)  # ensure bool dtype
+    out_path = os.path.join(args.output_base_path, 'adata_objects', 'adata1.h5ad')
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    adata.write_h5ad(out_path)
+    logger.info(f'💾 Saved full QC-flagged AnnData: {out_path}')
+    print(f'✅ Saved full QC-flagged AnnData: {out_path}')
 
-    path = os.path.join(args.output_base_path, 'adata_objects', 'adata1.h5ad')
-    adata.write_h5ad(path)
-    logger.info(f'💾 Saved full QC-flagged AnnData: {path}')
-    print(f'✅ Saved full QC-flagged AnnData: {path}')
-
+    # ── 10. Final Print Summary ───────────────────────────────────────────────────
     del adata
     print_success_guide(args.output_base_path)
+
 
