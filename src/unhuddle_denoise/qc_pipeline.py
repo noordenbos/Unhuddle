@@ -344,7 +344,7 @@ def plot_intensity_distribution(adata, qc_dir, low_intensity_threshold):
     axes[0].axvline(low_intensity_threshold, color='red', linestyle='--', linewidth=2)
     axes[0].text(low_intensity_threshold + 0.5, axes[0].get_ylim()[1] * 0.9,
                  f"value --low_intensity_threshold = {low_intensity_threshold}",
-                 color='red', rotation=90, va='top', ha='left', fontsize=10)
+                 color='red', va='top', ha='left', fontsize=10)
     axes[0].set_title("Summed Intensity (0–45)")
 
     # Full range view
@@ -352,7 +352,7 @@ def plot_intensity_distribution(adata, qc_dir, low_intensity_threshold):
     axes[1].axvline(low_intensity_threshold, color='red', linestyle='--', linewidth=2)
     axes[1].text(low_intensity_threshold + (data.max() * 0.01), axes[1].get_ylim()[1] * 0.9,
                  f"--low_intensity_threshold = {low_intensity_threshold}",
-                 color='red', va='top', ha='left', fontsize=8)
+                 color='red', va='top', ha='left', fontsize=10)
     axes[1].set_title("Summed Intensity (Full Range)")
 
     plt.tight_layout()
@@ -383,7 +383,7 @@ def generate_cohort_normalization_qc(
     os.makedirs(output_dir, exist_ok=True)
     if var_names is None:
         var_names = adata.var_names.tolist()
-    marker_subset = var_names[:6]  # Select subset to visualize
+    marker_subset = var_names  # Select subset to visualize
 
     logger.info("📊 Generating cohort-level normalization QC")
 
