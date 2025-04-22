@@ -13,24 +13,24 @@ By identifying stable, broadly expressed "normalisation markers" and performing 
 ### 📥 1. Clone the Repository
 via https
 ```bash
-git clone https://github.com/tbee05/unhuddle.git
+git clone https://github.com/tbee05/unhuddle-denoise.git
 cd unhuddle
 ```
 via ssh
 ```bash
-git clone git@github.com:tbee05/unhuddle.git
+git clone git@github.com:tbee05/unhuddle-denoise.git
 cd unhuddle
 ```
 ### 📦 2. Set Up a Virtual Environment
 Using venv:
 ```bash
-python -m venv unhuddle
+python -m venv unhuddle-denoise
 source unhuddle/bin/activate      # On Windows: unhuddle\Scripts\activate
 ```
 or conda:
 ```bash
-conda create -n unhuddle -y
-conda activate unhuddle
+conda create -n unhuddle-denoise -y
+conda activate unhuddle-denoise
 conda install pip
 ```
 ### 🛠️ 3. Install UNHUDDLE in Editable Mode
