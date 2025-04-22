@@ -13,24 +13,24 @@ By identifying stable, broadly expressed "normalisation markers" and performing 
 ### 📥 1. Clone the Repository
 via https
 ```bash
-git clone https://github.com/tbee05/unhuddle-denoise.git
+git clone https://github.com/tbee05/unhuddle_denoise.git
 cd unhuddle
 ```
 via ssh
 ```bash
-git clone git@github.com:tbee05/unhuddle-denoise.git
+git clone git@github.com:tbee05/unhuddle_denoise.git
 cd unhuddle
 ```
 ### 📦 2. Set Up a Virtual Environment
 Using venv:
 ```bash
-python -m venv unhuddle-denoise
+python -m venv unhuddle_denoise
 source unhuddle/bin/activate      # On Windows: unhuddle\Scripts\activate
 ```
 or conda:
 ```bash
-conda create -n unhuddle-denoise -y
-conda activate unhuddle-denoise
+conda create -n unhuddle_denoise -y
+conda activate unhuddle_denoise
 conda install pip
 ```
 ### 🛠️ 3. Install UNHUDDLE in Editable Mode
@@ -41,7 +41,7 @@ This installs unhuddle as a CLI tool available from anywhere in your terminal.
 
 ### ✅ 4. Verify Installation
 ```bash
-unhuddle --help
+unhuddle-denoise --help
 ```
 Should print a list of CLI arguments and options.
 
@@ -77,7 +77,7 @@ base_path/
 ### 🧪 6. Run the Pipeline on Included Demo Data
 linux:
 ```bash
-unhuddle \
+unhuddle-denoise \
   --base_path demodata \
   --output_base_path results/unhuddle_output \
   --nuclear_markers DNA1 DNA2 HistoneH3 \
@@ -88,7 +88,7 @@ unhuddle \
 ```
 windows powershell
 ```powershell
-unhuddle `
+unhuddle-denoise `
   --base_path demodata `
   --output_base_path results\unhuddle_output `
   --nuclear_markers DNA1 DNA2 HistoneH3 `
