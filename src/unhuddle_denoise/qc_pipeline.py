@@ -401,8 +401,11 @@ def generate_cohort_normalization_qc(
     # ── Extract layers as DataFrames ────────────────────────────────────────────
     mat_raw = adata.layers[layer_raw]
     mat_weighted = adata.layers[layer_weighted]
-    mat_area = adata.layers[layer_area] / np.clip(adata.obs.get("Area", np.ones(adata.n_obs))[:, None], 1e-5, None)
+    if "Area" not in adata.obs.columns:
+        raise KeyError("❌ 'Area' column is missing from adata.obs. This is required for normalization QC.")
 
+    area_array = np.asarray(adata.obs["Area"])
+    mat_area = adata.layers[layer_area] / np.clip(area_array[:, None], 1e-5, None)
     raw_df = pd.DataFrame(mat_raw, columns=var_names)
     weighted_df = pd.DataFrame(mat_weighted, columns=var_names)
     area_df = pd.DataFrame(mat_area, columns=var_names)
