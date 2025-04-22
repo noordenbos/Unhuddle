@@ -11,10 +11,6 @@ from datetime import datetime
 from typing import Optional
 import platform
 
-
-
-_LOGGING_INITIALIZED = False
-
 _LOGGING_INITIALIZED = False
 
 def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> None:

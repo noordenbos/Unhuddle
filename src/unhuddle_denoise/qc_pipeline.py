@@ -327,6 +327,39 @@ def print_success_guide(output_base_path):
     per_fov_stats = os.path.join(qc_dir, 'per_fov_stats.csv')
     if os.path.exists(per_fov_stats):
         print(f" - Per-FOV stats CSV:      {per_fov_stats}")
+import os
+import numpy as np
+import matplotlib.pyplot as plt
+
+def plot_intensity_distribution(adata, qc_dir, low_intensity_threshold):
+    """
+    Plot total intensity distribution across all cells, with a line at the filtering threshold.
+    """
+    data = adata.obs["total_intensity"]
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8))
+
+    # Zoomed view (0–45)
+    bins_a = np.arange(0, 45 + 0.2, 0.2)
+    axes[0].hist(data, bins=bins_a, color='skyblue', edgecolor='black')
+    axes[0].axvline(low_intensity_threshold, color='red', linestyle='--', linewidth=2)
+    axes[0].text(low_intensity_threshold + 0.5, axes[0].get_ylim()[1] * 0.9,
+                 f"value --low_intensity_threshold = {low_intensity_threshold}",
+                 color='red', rotation=90, va='top', ha='left', fontsize=10)
+    axes[0].set_title("Summed Intensity (0–45)")
+
+    # Full range view
+    axes[1].hist(data, bins=100, color='lightgray', edgecolor='black')
+    axes[1].axvline(low_intensity_threshold, color='red', linestyle='--', linewidth=2)
+    axes[1].text(low_intensity_threshold + (data.max() * 0.01), axes[1].get_ylim()[1] * 0.9,
+                 f"value --low_intensity_threshold = {low_intensity_threshold}",
+                 color='red', rotation=90, va='top', ha='left', fontsize=10)
+    axes[1].set_title("Summed Intensity (Full Range)")
+
+    plt.tight_layout()
+    os.makedirs(qc_dir, exist_ok=True)
+    out_path = os.path.join(qc_dir, "total_intensity_distribution.png")
+    plt.savefig(out_path, dpi=150)
+    plt.close()
 
 
 def run_qc_from_memory(args, adata):
@@ -344,6 +377,7 @@ def run_qc_from_memory(args, adata):
 
     tot = adata.layers['sum_unhuddle'].sum(axis=1)
     adata.obs['total_intensity'] = tot
+    plot_intensity_distribution(adata, qc_dir, args.low_intensity_threshold)
     adata.obs['QC_low_intensity_filter'] = tot < args.low_intensity_threshold
     low_count = int(adata.obs['QC_low_intensity_filter'].sum())
 
