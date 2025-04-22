@@ -15,42 +15,42 @@ _LOGGING_INITIALIZED = False
 
 def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> None:
     """
-    Set up logging with the specified log level.
-    Logs WARNING+ to console by default, and INFO+ to a file if output_base_path is provided.
+    Set up logging:
+    - Console: logs at user-specified level (e.g., INFO or DEBUG)
+    - File: logs INFO+ by default, or DEBUG if log_level == DEBUG
     Prevents reinitialization across FOV loop calls.
     """
     global _LOGGING_INITIALIZED
     if _LOGGING_INITIALIZED:
         return
 
-    level = getattr(logging, log_level.upper(), logging.INFO)
+    requested_level = getattr(logging, log_level.upper(), logging.INFO)
+    console_level = requested_level
+    file_level = logging.DEBUG if requested_level == logging.DEBUG else logging.INFO
 
-    # Force root logger config
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
-        force=True
-    )
-
-    # Ensure root logger has at least one handler
+    # Reset logging and start clean
+    logging.basicConfig(level=logging.NOTSET, force=True)
     root = logging.getLogger()
-    if not root.handlers:
-        stream = logging.StreamHandler()
-        stream.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
-        root.addHandler(stream)
-    root.setLevel(level)
-    #save logging
+    root.handlers = []
+
+    # ── Console Handler ───────────────────────────────
+    console_handler = logging.StreamHandler()
+    console_handler.setLevel(console_level)
+    console_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    root.addHandler(console_handler)
+
+    # ── File Handler (if requested) ───────────────────
     if output_base_path:
         log_dir = os.path.join(output_base_path, "logs")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, f"unhuddle_run_{datetime.now():%Y%m%d_%H%M%S}.log")
 
         file_handler = logging.FileHandler(log_path)
-        file_handler.setLevel(logging.INFO)
+        file_handler.setLevel(file_level)
         file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
         root.addHandler(file_handler)
 
-        # === Log CLI call + environment summary ===
+        # Write system & CLI summary
         root.info("📝 CLI call:\n    " + " ".join(sys.argv))
         root.info("🧪 Environment:")
         root.info(f"    Platform: {platform.platform()}")
@@ -61,22 +61,8 @@ def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> Non
         root.info(f"    Working directory: {os.getcwd()}")
         root.info(f"📁 Full pipeline log will be saved to: {log_path}")
 
-    # Propagate and configure all 'unhuddle.*' loggers
-    for name in logging.root.manager.loggerDict:
-        if name.startswith("unhuddle"):
-            logger = logging.getLogger(name)
-            logger.setLevel(level)
-            logger.propagate = True
-
-    logger = logging.getLogger(__name__)
-    logger.debug("🛠️ Logging system has been initialized")
-
-    # Print summary of logger levels (optional diagnostics)
-    for name in sorted(logging.root.manager.loggerDict):
-        l = logging.getLogger(name)
-        logger.debug(f"{name:40} level={logging.getLevelName(l.level)}")
-
-    if level == logging.DEBUG:
+    # ── Optional Library Tuning (DEBUG only) ──────────
+    if requested_level == logging.DEBUG:
         noisy_libs = [
             "selenium", "urllib3", "httpcore",
             "selenium.webdriver.remote.remote_connection"
@@ -86,19 +72,13 @@ def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> Non
             lib_logger.setLevel(logging.DEBUG)
             lib_logger.propagate = True
 
-        # 🔇 Suppress matplotlib & PIL debug logs
-        for noisy in [
-            "matplotlib", "matplotlib.font_manager",
-            "matplotlib.pyplot", "PIL", "PIL.Image"
-        ]:
-            lib_logger = logging.getLogger(noisy)
-            lib_logger.setLevel(logging.WARNING)
-            lib_logger.propagate = False
+        for lib in ["matplotlib", "matplotlib.font_manager", "PIL", "PIL.Image"]:
+            logging.getLogger(lib).setLevel(logging.WARNING)
 
-        logger.debug("📡 Verbose logging enabled for Selenium and network libraries (matplotlib and PIL suppressed)")
-
+    # ── Confirmation ──────────────────────────────────
     _LOGGING_INITIALIZED = True
-
+    logger = logging.getLogger(__name__)
+    logger.debug("🛠️ Logging system initialized (console=%s, file=%s)", logging.getLevelName(console_level), logging.getLevelName(file_level))
 
 def parse_arguments() -> argparse.Namespace:
     """
