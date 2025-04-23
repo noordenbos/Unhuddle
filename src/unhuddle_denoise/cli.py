@@ -95,7 +95,8 @@ def main():
 
     logger.info(f"📊 Total number of cells in cohort: {total_cells:,}")
 
-    if total_cells <= 100000:
+    # Prompt user if denoising is enabled but cohort is small
+    if args.use_denoised and total_cells <= 100000:
         logger.warning(
             f"⚠️ Cohort contains only {total_cells:,} cells. "
             "Denoising may be unreliable below 100,000 cells."
