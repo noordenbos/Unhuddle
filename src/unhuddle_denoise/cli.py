@@ -16,7 +16,8 @@ from unhuddle_denoise.cli_helpers import (
     create_adata,
     save_cli_call,
     fitsne,
-    run_qc_pipeline
+    run_qc_pipeline,
+    count_total_cells_from_csvs
 )
 
 # These must remain top-level for multiprocessing compatibility
@@ -88,22 +89,13 @@ def main():
         max_workers=args.max_workers,
         description="🔬 Extracting Features"
     )
-    # Debug: Check the structure of results_stage1
-    logger.debug(f"📦 Results Stage 1: types = {[type(r) for r in results_stage1]}")
-    for i, r in enumerate(results_stage1[:3]):
-        logger.debug(f"Result {i}: {type(r)} — {getattr(r, 'shape', 'no shape')}")
+    # Count total number of cells after Stage 1
+    args.total_cells = count_total_cells_from_csvs(dirs["protein"])
+    logger.info(f"📊 Total number of cells in cohort: {args.total_cells:,}")
 
-    # Count total cells from all Stage 1 results
-    import pandas as pd
-    total_cells = sum(len(df) for df in results_stage1 if isinstance(df, pd.DataFrame))
-    args.total_cells = total_cells
-
-    logger.info(f"📊 Total number of cells in cohort: {total_cells:,}")
-
-    # Prompt user if denoising is enabled but cohort is small
-    if args.use_denoised and total_cells <= 100000:
+    if args.use_denoised and args.total_cells <= 100000:
         logger.warning(
-            f"⚠️ Cohort contains only {total_cells:,} cells. "
+            f"⚠️ Cohort contains only {args.total_cells:,} cells. "
             "Denoising may be unreliable below 100,000 cells."
         )
         response = input("❓ Proceed with denoising anyway? (y/N): ").strip().lower()

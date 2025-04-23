@@ -178,6 +178,22 @@ def save_cli_call(output_base_path, filename="cli_call.txt"):
         f.write(cmd + "\n")
     return full_output_path
 
+def count_total_cells_from_csvs(csv_dir: str) -> int:
+    """
+    Count the total number of cells in a folder containing per-FOV CSVs
+    (each row corresponds to a cell; assumes header row is present).
+    """
+    total = 0
+    csv_files = glob.glob(os.path.join(csv_dir, "*.csv"))
+    for path in csv_files:
+        try:
+            with open(path, "r") as f:
+                n_rows = sum(1 for _ in f) - 1  # subtract header
+                total += n_rows
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to count rows in {path}: {e}")
+    return total
+
 def list_available_markers(args: argparse.Namespace) -> None:
     """
     List available markers from the first FOV found in the base path.
