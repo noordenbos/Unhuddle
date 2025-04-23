@@ -88,6 +88,10 @@ def main():
         max_workers=args.max_workers,
         description="🔬 Extracting Features"
     )
+    # Debug: Check the structure of results_stage1
+    logger.debug(f"📦 Results Stage 1: types = {[type(r) for r in results_stage1]}")
+    for i, r in enumerate(results_stage1[:3]):
+        logger.debug(f"Result {i}: {type(r)} — {getattr(r, 'shape', 'no shape')}")
 
     # Count total cells from all Stage 1 results
     import pandas as pd
