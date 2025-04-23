@@ -20,17 +20,16 @@ The Unhuddle pipeline is built to empower all curious scientists — whether you
 
 Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, producing a comprehensive AnnData object that packages your cell-level features, masks, spatial coordinates, and marker intensities — all ready for analysis. If you don’t already have segmentation masks, Unhuddle can optionally generate them for you using DeepCell-Mesmer, enabling a truly end-to-end experience.
 
-Before you start, we highly recommend applying pixel-level denoising to your raw image data. Denoising improves signal clarity, reduces spillover and autofluorescence artifacts, and often leads to better quantification and phenotype classification.
-
-Several open-source tools exist for this purpose:
+**External preprocessing:**  
+Before you start, we highly recommend applying some pixel-level preprocessing to your raw image data. This should include at minimum removal of oversaturated pixels and general background substraction. Several open-source tools exist for this purpose:
 
 🔬 PENGUIN – a GUI in notebook for preprocessing of multiplexed tissue images. https://github.com/deMirandaLab/PENGUIN (accessible heuristic method)
 
 🧼 IMC-Denoise – Content-aware pipeline that enhances Imaging Mass Cytometry data by combining pixel-level artifact removal and self-supervised noise suppression to improve image quality and downstream single-cell analysis. https://github.com/PENGLU-WashU/IMC_Denoise (deeplearning based method)
 
-Once your data is denoised, Unhuddle takes care of the rest — integrating morphometrics, reallocation models, functional normalization, and quality control in one modular framework. The resulting AnnData object can be extended with your own metadata or omics layers and is fully compatible with Scanpy and SpaceCat workflows. We've included example Jupyter notebooks to help you dive into downstream analyses and visualizations.
+Once your data is preprocessed, Unhuddle takes care of the rest — integrating morphometrics, reallocation models, functional normalization, and quality control in one modular framework. The resulting AnnData object can be extended with your own metadata or omics layers and is fully compatible with Scanpy and SpaceCat workflows. We've included example Jupyter notebooks to help you dive into downstream analyses and visualizations.
 
-<img src="assets/images/unhuddle_pipeline_final.png" alt="pipe" width="1000" align="left"/> 
+<img src="assets/images/unhuddle_pipeline_final.png" alt="pipe" width="1100" align="left"/> 
 
 ## 🚀 Getting Started with UNHUDDLE
 
