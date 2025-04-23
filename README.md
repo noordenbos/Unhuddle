@@ -7,7 +7,7 @@
 
 <br>UNHUDDLE is an algorithm designed to resolve signal in densely packed tissue regions — or "cell huddles" — in multiplex spatial proteomics, where traditional absolute segmentation introduces 'neighbor noise' and blur the phenotypic signal.
 
-On the cell to cell borderpixels, shared signal is observed due to 1 resolution issues, 2 lateral bleed and 3 z-projection. Unhuddle knows the cell's neighbors, measures their mean intensity and reallocates the bordersignal to the rightful owner. 
+On the cell to cell borderpixels, shared signal is observed due to 1 resolution issues, 2 lateral bleed/signal spill and 3 z-projection. Unhuddle knows the cell's neighbors, measures their mean intensity and reallocates the bordersignal to the rightful owner. Unhuddle is equiped with an optional denoiser that may be very effective on your dataset if you have a total cell size of >100,000 (summation over all fovs on the same slide/session. Unhuddle values are normalized by average phenotype marker expression, defending against variation in overall staining intensity between fovs and consequently normalized by cell size (surface).
 
 By identifying stable, broadly expressed "normalisation markers" and performing per-cell normalization, UNHUDDLE enables more accurate within-cell-type comparison of functional markers (e.g., checkpoint proteins), even in spatially crowded microenvironments.
 
@@ -260,44 +260,104 @@ unhuddle `
 For each FOV (field of view) folder, the following stages are run:
 
 ### 1. **Mask Processing & Interaction Computation**
-- Segment cells, nuclei, and membranes.
+- Segment cells, nuclei, and membranes using the provided marker images.
 - Compute:
-  - Border interactions (from membrane adjacency)
-  - Background interactions (from empty space)
-- Merge into a typed interaction dictionary.
+  - Border interactions (via membrane adjacency)
+  - Background interactions (via contact with empty space)
+- Output: a typed interaction dictionary used to model per-pixel signal flow.
 
 ### 2. **Feature Extraction**
-- Extract per-cell morphological features (area, eccentricity, etc.)
-- Exported to CSV.
+- Extract per-cell morphological features (e.g., area, eccentricity, nucleus/cell ratios).
+- Output saved to `/morphology_features/{fov}.csv`.
 
 ### 3. **Protein Intensity Extraction**
-- Compute marker intensities per segmented cell (excluding nuclear markers).
-- Exported to CSV.
+- Compute per-cell marker intensities using:
+  - Cell mask
+  - Membrane mask
+  - Membrane exclusion mask
+- Nuclear markers are excluded from this step.
+- Output saved to `/protein_features/{fov}.csv`.
 
-### 4. **Object-Intensity Reallocation**
-- Reorganize per-pixel interactions into per-cell structure.
-- Allocate intensities based on interaction-weighted mean signal.
-- *(Graphical schematic to be added here 🔜)*
+---
 
-### 5. **Intensity Settlement**
-- Merge morphology and intensity features.
-- Apply corrections and output per-measure-type summaries (keeps original available):
-  - `/unhuddle_sum/{fov}.csv`, `/original_sum/{fov}.csv`
+## 🧽 Denoising (Optional)
 
+### 4. **Cohort-Level Signal/Noise Decomposition**
+- If `--use_denoised` is enabled:
+  - A **piecewise linear model** is fit per marker using cell **area** and summed membrane-exclusion signal.
+  - **Signal cones** are identified from small-area cells; **noise cones** from large-area cells.
+  - The resulting **denoised reallocation factors** quantify the fraction of signal attributable to noise.
+- For cohorts with <200,000 cells, denoising is less reliable and skipped unless the user opts in.
+- Output:
+  - `denoised_reallocation_summary.csv`
 
-### 6. **Normalized Intensity Calculation**
-- Normalize per-cell values by a weighted mean of top **normalisation markers** (e.g., CD45, CD3, Vimentin).
-- Normalisation markers are broadly expressed (typically membrane or cytoplasmic) and support robust within-cell-type comparisons of functional markers like checkpoint inhibitors.
-- Values are then robustly scaled per-marker using [0.1, 99.9] percentiles.
-- Output: normalized per-cell intensity matrix (values in [0, 1]).
-  - `/unhuddle_normalized/{fov}.csv`, `/original_normalized/{fov}.csv`
+#### 🖼️ Denoiser Visualization Module
+- Produces per-marker plots:
+  - Hexbin density of Area vs. Intensity
+  - Piecewise signal vs. noise fits
+  - Apex anchors and model overlays
+- Output saved as a storyboard PDF for cohort-level review.
 
-### 7. **Optional DeepCell Mask Creation**
-- Generate RGB overlays from selected markers.
-- Use Selenium to upload to DeepCell.org, download results, and integrate mask into downstream analysis.
+---
 
-### 8. **Optional save all the FOV data to Anndata object**
-- integrated h5ad object ready for use with scanpy or for rendering annotated FOV images
+## 🔁 Reallocation and Rescaling
+
+### 5. **Object-Intensity Reallocation**
+- Merge morphological and protein features with the interaction dictionary.
+- Redistribute membrane-excluded per-pixel intensities across interacting objects using weighted contributions.
+- Output:
+  - `/unhuddle_sum/{fov}.csv`
+  - `/original_sum/{fov}.csv`
+
+### 6. **Normalization**
+- Apply normalization using `--normalisation_markers` (e.g., CD45, CD3, Vimentin):
+  - Compute a **weighted mean normalization factor** per cell.
+  - Scale all markers per cell using this factor.
+  - Apply robust scaling to [0.1, 99.9] percentile range (per marker).
+- Denoised reallocation intensities are used if `--use_denoised` is active.
+- Output:
+  - `/unhuddle_normalized/{fov}.csv`
+  - `/original_normalized/{fov}.csv`
+
+#### 🖼️ Normalization Visualization Module
+- Generates:
+  - Per-marker normalization range comparisons
+  - Scatter plots of pre/post-normalized values
+  - Cohort-level scaling factors
+- All outputs saved to `/qc_normalization_plots/`.
+
+---
+
+## 📦 Optional Modules
+
+### 7. **DeepCell Mask Creation**
+- If `--create_deepcell_mask` is enabled:
+  - RGB overlays are generated from marker channels
+  - Uploaded to [DeepCell.org](https://deepcell.org) using a headless Selenium session
+  - Results are downloaded and integrated into downstream segmentation
+
+### 8. **AnnData Object Creation**
+- If `--create_adata` is used:
+  - All per-FOV features, masks, and normalized intensities are assembled into a single `.h5ad` file
+  - Includes QC flags, overlays, and spatial information
+  - Compatible with `scanpy`, `napari`, and `SpaceCat` pipelines
+
+---
+
+### 9. **Automated Filtering & Embedding QC**
+- Performed automatically on the assembled AnnData object
+- Includes:
+  - Low-intensity filtering (`QC_low_intensity_filter`)
+  - Local density filtering (`QC_dr_based_filter`)
+  - Optional spatial smoothing or embedding overlays
+- Visual outputs:
+  - Histograms of marker intensity
+  - Density maps
+  - Annotated DR embeddings (e.g., t-SNE, FIt-SNE)
+  - Summary figures for each cohort
+- Output:
+  - `/qc_pipeline/` with all summary PDFs and CSVs
+
 
 ## 🧰 Available Arguments
 
@@ -343,24 +403,67 @@ For each FOV (field of view) folder, the following stages are run:
 | `--membrane-markers_overlay`          | Markers for green channel override (membrane/cytoplasm) default: use `normalisation_markers` |  
 | `--blue-markers`           | Optional markers for blue channel |
 
+---
+
+### 🧽 Denoising & Normalization
+
+| Argument              | Description                                                                                     |
+|-----------------------|-------------------------------------------------------------------------------------------------|
+| `--use_denoised`      | Enables **cohort-level denoising** of marker intensities using signal vs. noise cone modeling. |
+| `--normalisation_markers` | Required. Markers used for per-cell normalization (e.g., CD45, Vimentin).                 |
+| `--nuclear_markers`   | Required. Markers used for nucleus detection and morphology extraction.                        |
+
+---
+
+### 🧬 AnnData QC & Filtering
+
+| Argument                        | Description                                                                                  |
+|----------------------------------|----------------------------------------------------------------------------------------------|
+| `--no_qc`                        | Disables the QC filtering pipeline on the final AnnData object.                             |
+| `--low_intensity_threshold`      | Minimum total intensity to retain a cell (default: `10`).                                   |
+| `--qc_density_threshold`         | Density threshold for local density map filtering (default: `550`).                         |
+| `--qc_plot_density_scale`        | Value range for density map visualization (default: `0 800`).                               |
+| `--radius_DRfilter`             | Radius used in neighborhood filtering on DR embedding (default: `0.8`).                     |
+
+> 🛠️ Advanced tuning parameters (usually fixed, can be overridden):
+> - `--qc_window_size` (default `50`) – Sliding window size for density computation.
+> - `--qc_stride` (default `10`) – Stride used when computing local density.
+> - `--qc_region_threshold` (default `0.8`) – Minimum fraction of neighborhood pixels that must be high-density.
+
+---
+
+### 🧭 Dimension Reduction
+
+| Argument                             | Description                                                                                      |
+|--------------------------------------|--------------------------------------------------------------------------------------------------|
+| `--fitsne`                           | Run FIt-SNE locally for QC-annotated embeddings. Requires extended setup!                |
+| `--add_dimensionreduction_coords`    | Path to folder with `{fov}.csv` files having: `Label`, `dr_1`, `dr_2` columns.                   |
+| `--coord_cols`                       | Names of the coordinate columns in the supplied CSVs (default: `dr_1 dr_2`). support: umap, tsne, fitsne, optsne, phate, pca              |
+
+
+---
+
 ### 🪵 Logging
 
-| Argument                     | Description |
-|-----------------------------|-------------|
-| `--log-level`              | One of: `DEBUG`, `INFO`, `WARNING`, `ERROR` |
+| Argument         | Description                                  |
+|------------------|----------------------------------------------|
+| `--log-level`    | One of: `DEBUG`, `INFO`, `WARNING`, `ERROR`  |
 
 ---
 ## 🧬 UNHUDDLE AnnData Object Guide
 ### 🧬 `adata.obs` — Per-cell annotations
 
-| Column             | Description                                                                 |
-|--------------------|-----------------------------------------------------------------------------|
-| `cell_id` *(index)* | Unique cell identifier: **`{fov}_{Label}`**, e.g., `P23_1_42`               |
-| `fov`              | Field of View name: **`{patientID}_{FOVnumber}`**, e.g., `P23_1`             |
-| `patient_id`       | Derived from FOV name, e.g., `P23`                                           |
-| `summed_intensity` | Total protein intensity for that cell (sum of normalized values)            |
-| `QC_no_nucleus`    | Boolean flag indicating no nuclear signal                                   |
-| `...`              | All other morphology features (area, eccentricity, etc.)                    |
+| Column              | Description                                                                   |
+|---------------------|-------------------------------------------------------------------------------|
+| `cell_id` *(index)* | Unique cell identifier: **`{fov}_{Label}`**, e.g., `P23_1_42`                 |
+| `fov`               | Field of View name: **`{patientID}_{FOVnumber}`**, e.g., `P23_1`              |
+| `patient_id`        | Derived from FOV name, e.g., `P23`                                            |
+| `summed_intensity`  | Total protein intensity for that cell (sum of normalized values)              |
+| `QC_no_nucleus`     | Boolean flag indicating missing nuclear signal                                |
+| `QC_low_intensity_filter` | Flag marking cells below total intensity threshold                     |
+| `QC_dr_based_filter`      | Flag marking cells filtered based on DR-embedding neighborhood density |
+| `...`               | All other extracted morphology features (area, eccentricity, etc.)            |
+
 
 ---
 
@@ -421,6 +524,71 @@ For each FOV (field of view) folder, the following stages are run:
 ---
 
 
+## 🧪 More info on Denoising vs Normalization — Strategy Overview
+
+UNHUDDLE supports both **denoising** and **normalization** as modular steps. While they are often used together to stabilize and compare marker expression levels, they serve different goals and can be used independently depending on your analysis needs.
+
+---
+
+### 🧽 Denoising (Optional — `--use_denoised`)
+
+Biological signal from cell surface markers can be confounded by area-dependent **background accumulation**, particularly in large or irregularly shaped cells. UNHUDDLE addresses this by modeling per-marker intensity as a function of cell area:
+
+- **Small-area cells** define a **signal cone** with high-confidence expression.
+- **Large-area cells** define a **noise cone** representing background accumulation.
+- A **piecewise linear model** is fit to both cones, estimating the degree to which intensity scales with area.
+- From this, **denoised reallocation factors** are derived and applied per cell to suppress nonspecific signal.
+
+The denoising step is optional and triggered with `--use_denoised`. For small cohorts (e.g., <200,000 cells), the pipeline will prompt the user before proceeding with denoising.
+
+**Output:**
+- Denoised values are included as:
+  - `*_FinalDenoised_Intensity` (in `protein_features`)
+  - `sum_denoised` (in the final AnnData `.layers` dictionary)
+
+🖼 Visualization:
+- Cohort-level hexbin plots showing the model fit, anchor points, and intensity vs. area profiles per marker
+- Exported to `signal_noise_qc.pdf`
+
+---
+
+### 🎚 Normalization Strategy
+
+After raw or denoised marker intensities are computed, UNHUDDLE applies a **normalization procedure** to harmonize expression across cells:
+
+1. **Normalization Factor Calculation**:
+   - A user-defined set of `--normalisation_markers` (e.g., CD45, Vimentin) is used.
+   - The top 4 highest-expressing markers (per cell) are averaged to compute a **per-cell normalization factor**.
+
+2. **Rescaling**:
+   - All marker intensities are divided by this factor (to yield normalized expression).
+   - Each marker is then scaled to the `[0.1, 99.9]` percentile range across the cohort to reduce the influence of outliers.
+
+**Output:**
+- Final normalized values per marker per cell:
+  - `sum_unhuddle_normalized`, `sum_original_normalized`, or `sum_denoised_normalized` (via `.layers`)
+  - Corresponding raw values are preserved in `.layers` and CSV outputs
+
+🖼 Visualization:
+- Per-marker before/after normalization scatter plots
+- Density curves and range histograms
+- Saved in `qc_normalization_plots/`
+
+---
+
+### ⚙️ User Control and Alternatives
+
+If preferred, users can **bypass cohort-wide normalization** and apply their own scaling by combining raw intensity layers with cell area:
+
+```python
+# Simple per-area normalization
+adata.layers["sum_unhuddle_per_area"] = adata.layers["sum_unhuddle"] / adata.obs["Area"].values[:, None]
+adata.X = adata.layers["sum_unhuddle_per_area"].copy()
+adata.uns["X_source"] = "sum_unhuddle_per_area"
+```
+This provides a simple per-unit-area normalization, which may be preferable in specific use cases.
+
+🔁 Tip: All raw and processed intensity layers are preserved in the AnnData object for flexible reanalysis.
 
 ## 📎 Notes
 ✅ Python Compatibility:
