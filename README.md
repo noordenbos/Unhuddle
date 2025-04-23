@@ -87,7 +87,8 @@ unhuddle-denoise \
   --normalisation_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 \
   --create_nuclear_mask \
   --max_workers 1 \
-  --create_adata
+  --create_adata \
+  --use_denoise
 ```
 windows powershell
 ```powershell
@@ -98,7 +99,8 @@ unhuddle-denoise `
   --normalisation_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 `
   --create_nuclear_mask `
   --max_workers 1 `
-  --create_adata
+  --create_adata `
+  --use_denoise
 ```
 
 
