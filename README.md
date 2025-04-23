@@ -304,8 +304,8 @@ For each FOV (field of view) folder, the following stages are run:
 
 ---
 
-## 🧽 Denoising (Optional)
-
+## 🧽 Denoising (Optional)  
+<img src="assets/images/example_denoise_fit.png" alt="logo" width="350" align="right"/>  
 ### 4. **Cohort-Level Signal/Noise Decomposition**
 - If `--use_denoised` is enabled:
   - A **piecewise linear model** is fit per marker using cell **area** and summed membrane-exclusion signal.
@@ -314,13 +314,13 @@ For each FOV (field of view) folder, the following stages are run:
 - For cohorts with <200,000 cells, denoising is less reliable and skipped unless the user opts in.
 - Output:
   - `denoised_reallocation_summary.csv`
-
+  
 #### 🖼️ Denoiser Visualization Module
 - Produces per-marker plots:
   - Hexbin density of Area vs. Intensity
   - Piecewise signal vs. noise fits
   - Apex anchors and model overlays
-- Output saved as a storyboard PDF for cohort-level review.
+- Output saved as a storyboard PDF for cohort-level review.  
 
 ---
 
