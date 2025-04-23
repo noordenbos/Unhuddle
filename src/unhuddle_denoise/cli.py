@@ -89,6 +89,24 @@ def main():
         description="🔬 Extracting Features"
     )
 
+    # Count total cells from all Stage 1 results
+    total_cells = sum(len(df) for df in results_stage1 if isinstance(df, pd.DataFrame))
+    args.total_cells = total_cells
+
+    logger.info(f"📊 Total number of cells in cohort: {total_cells:,}")
+
+    if total_cells <= 100000:
+        logger.warning(
+            f"⚠️ Cohort contains only {total_cells:,} cells. "
+            "Denoising may be unreliable below 100,000 cells."
+        )
+        response = input("❓ Proceed with denoising anyway? (y/N): ").strip().lower()
+        if response not in ["y", "yes"]:
+            logger.info("⏭️ Skipping denoising due to small cohort size.")
+            args.use_denoised = False
+        else:
+            logger.info("✅ Proceeding with denoising despite small cohort.")
+
     # Stage 2a: Denoising (cohort-level)
     if args.use_denoised:
         logger.info("📊 Computing denoised reallocation factors (cohort-wide) ...")
