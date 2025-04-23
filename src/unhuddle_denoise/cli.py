@@ -2,7 +2,6 @@
 
 import os
 import logging
-import pandas as pd
 from functools import partial
 from unhuddle_denoise.cli_helpers import (
     parse_arguments,
@@ -91,6 +90,7 @@ def main():
     )
 
     # Count total cells from all Stage 1 results
+    import pandas as pd
     total_cells = sum(len(df) for df in results_stage1 if isinstance(df, pd.DataFrame))
     args.total_cells = total_cells
 
