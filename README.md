@@ -232,7 +232,8 @@ Remove-Item "$toolsDir\geckodriver.zip"
 
 ---
 
-### 🧪 Verify Installation
+<details>
+  <summary><strong>🧪 Verify Installation</strong></summary>
 
 Run in terminal or PowerShell:
 ```bash
@@ -244,11 +245,37 @@ Or in Windows:
 ```powershell
 & "$env:USERPROFILE\tools\Firefox\firefox.exe" --version
 & "$env:USERPROFILE\tools\geckodriver.exe" --version
+```  
+</details>
+
+
+
+### 🚀🚀🚀 7. Run the Full End-to-End Pipeline
+
+🎯 **Pro Tip:** Add `--list_available_markers` to double-check which markers are detected.  
+🎯 **Pro Tip:** Add `--check_output_exist` to skip FOVs that already have output and avoid recomputation.  
+<details>
+<summary>🎯 𝗣𝗿𝗼 𝗧𝗶𝗽: Download Additional Demo Data for Testing of the Denoiser (click to expand)</summary>
+
+The following commands will automatically download and unpack all available demo FOVs into `demodata/{FOV}` using the latest GitHub release.
+
+#### 🐧 Linux / macOS / WSL
+```bash
+mkdir -p demodata && curl -s https://api.github.com/repos/Tbee05/Unhuddle-denoise/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata/$fov && wget -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata/$fov --strip-components=1 && rm ${fov}.tar.gz; done
 ```
 
-### 🚀🚀🚀 7. Run the full End-to-End Pipeline
-🎯**protip:** add `--list_available_markers` to double check the available markers  
-🎯**protip:** add `--check_output_exist` to rerun the command; skips fovs that already have output  
+#### 🪟 Windows (PowerShell)
+```powershell
+Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle-denoise/releases/latest | Select-Object -ExpandProperty assets | Where-Object { $_.name -like "*.zip" } | ForEach-Object { $fov = $_.name -replace ".zip",""; New-Item -ItemType Directory -Force -Path "demodata\$fov"; Invoke-WebRequest -Uri $_.browser_download_url -OutFile "$fov.zip"; Expand-Archive -Path "$fov.zip" -DestinationPath "demodata\$fov"; Remove-Item "$fov.zip" }
+```
+
+📂 Result: Each downloaded dataset will be extracted into its own `demodata/{FOV}` folder — ready for direct use with the UNHUDDLE pipeline with the `--use_denoise` flag enabled.
+
+</details>
+
+
+---
+
 
 linux:
 ```bash
