@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from matplotlib.backends.backend_pdf import PdfPages
 import warnings
+import json
 warnings.filterwarnings("ignore", message=".*partition.*MaskedArray.*")
 
 logger = logging.getLogger(__name__)
@@ -118,7 +119,6 @@ def run_denoising_pipeline_on_dataframe(
         density_quantile: float = 0.1,
         min_cells_per_bin: int = 10,
         min_area: float = 15,
-        store_metadata: bool = True,
 ) -> pd.DataFrame:
     """
     Adds denoised values for each marker into a DataFrame based on signal/noise cone fitting.
@@ -259,20 +259,23 @@ def run_denoising_pipeline_on_dataframe(
         denoised_df[f"{marker}_ExclusionMembrane_Denoised_Intensity"] = residuals_clipped
         denoised_df[f"{marker}_ExclusionMembrane_FinalDenoised_Intensity"] = final_denoised
 
-        if store_metadata:
-            metadata[marker] = {
-                "apex_area": apex_area,
-                "apex_intensity": apex_intensity,
-                "signal_slope": signal_slope,
-                "noise_slope": noise_slope,
-                "alpha": alpha,
-                "beta": beta,
-                "intercept_model": intercept_model,
-                "area_regression_coef": gamma,
-                "area_regression_intercept": intercept_area
-            }
 
-    return (denoised_df, metadata) if store_metadata else denoised_df
+        metadata[marker] = {
+            "apex_area": apex_area,
+            "apex_intensity": apex_intensity,
+            "signal_slope": signal_slope,
+            "noise_slope": noise_slope,
+            "alpha": alpha,
+            "beta": beta,
+            "intercept_model": intercept_model,
+            "area_regression_coef": gamma,
+            "area_regression_intercept": intercept_area
+        }
+
+    return {
+        "denoised_df": denoised_df,
+        "metadata": metadata
+    }
 
 
 def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_dir):
@@ -285,6 +288,7 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
     all_fovs_data = []
     fov_ids = []
+    metadata_by_fov = {}
 
     for morph_path, protein_path in zip(morph_csv_paths, protein_csv_paths):
         try:
@@ -298,7 +302,15 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
             joint_df = morph_df[["Area"]].join(protein_df, how="inner")
             joint_df["fov"] = fov_name
 
-            all_fovs_data.append(joint_df)
+            # Denoise per FOV
+            result = run_denoising_pipeline_on_dataframe(joint_df, markers=[
+                col.replace("_ExclusionMembrane_Sum_Intensity", "")
+                for col in protein_df.columns if col.endswith("_ExclusionMembrane_Sum_Intensity")
+            ])
+            denoised_df = result["denoised_df"]
+            metadata_by_fov[fov_name] = result["metadata"]
+
+            all_fovs_data.append(denoised_df)
             fov_ids.append(fov_name)
 
         except Exception as e:
@@ -309,12 +321,6 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
     full_df = pd.concat(all_fovs_data, axis=0, ignore_index=True)
 
-    intensity_cols = [col for col in full_df.columns if col.endswith("_ExclusionMembrane_Sum_Intensity")]
-    markers = [col.replace("_ExclusionMembrane_Sum_Intensity", "") for col in intensity_cols]
-
-    logger.info("🚀 Running cohort-wide denoising on %d markers across %d FOVs...", len(markers), len(fov_ids))
-
-    denoised_df = run_denoising_pipeline_on_dataframe(full_df, markers)
     qc_output_pdf = os.path.join(
         os.path.dirname(protein_csv_paths[0]).replace("protein_features", "QC"),
         "denoiser_QC.pdf"
@@ -322,13 +328,14 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
     save_signal_noise_qc_from_df(
         df=full_df,
-        markers=markers,
+        markers=[col.replace("_ExclusionMembrane_Sum_Intensity", "")
+                 for col in full_df.columns if col.endswith("_ExclusionMembrane_Sum_Intensity")],
         output_pdf=qc_output_pdf,
         density_quantile=0.1,
         min_cells_per_bin=20
     )
 
-    for fov_name, group in denoised_df.groupby("fov"):
+    for fov_name, group in full_df.groupby("fov"):
         denoised_cols = [
             col for col in group.columns
             if col.endswith("_ExclusionMembrane_Denoised_Intensity") or col.endswith("_ExclusionMembrane_FinalDenoised_Intensity")
@@ -342,8 +349,6 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
         try:
             protein_df = pd.read_csv(protein_csv_path)
-
-            # Drop old denoised columns if they exist
             cols_to_drop = [col for col in protein_df.columns if col in denoised_block.columns]
             if cols_to_drop:
                 logger.debug(f"🧹 Overwriting existing denoised columns for FOV '{fov_name}': {cols_to_drop}")
@@ -351,8 +356,13 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
             updated_df = pd.concat([protein_df.reset_index(drop=True), denoised_block], axis=1)
             updated_df.to_csv(protein_csv_path, index=False)
-
             logger.info(f"📝 Denoised values updated in protein CSV for FOV: {fov_name}")
 
         except Exception as e:
             logger.error(f"❌ Failed to update {protein_csv_path}: {e}")
+
+    # Save metadata to single JSON
+    metadata_path = os.path.join(protein_features_dir.replace("protein_features", "QC"), "cohort_denoising_metadata.json")
+    with open(metadata_path, "w") as f:
+        json.dump(metadata_by_fov, f, indent=2)
+    logger.info(f"🧠 Denoising metadata saved to: {metadata_path}")

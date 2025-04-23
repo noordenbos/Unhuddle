@@ -105,7 +105,7 @@ def perform_dr_filtering(adata, radius, good_frac=0.75):
     dr_key = next((k for k in adata.obsm if k.startswith('X_') and k != 'X_spatial'), None)
 
     if dr_key is None:
-        logger.warning("⚠️ No DR embedding found in .obsm (e.g., X_tsne, X_umap). Skipping DR filtering.")
+        print("No DR embedding found in .obsm (e.g., X_tsne, X_umap). Skipping DR filtering. Consider adding Dimension reduction coordinates")
         adata.obs['QC_fraction_filtered'] = np.nan
         adata.obs['QC_dr_based_filter'] = False
         return adata
@@ -343,7 +343,7 @@ def plot_intensity_distribution(adata, qc_dir, low_intensity_threshold):
     axes[0].hist(data, bins=bins_a, color='skyblue', edgecolor='black')
     axes[0].axvline(low_intensity_threshold, color='red', linestyle='--', linewidth=2)
     axes[0].text(low_intensity_threshold + 0.5, axes[0].get_ylim()[1] * 0.9,
-                 f"value --low_intensity_threshold = {low_intensity_threshold}",
+                 f"--low_intensity_threshold = {low_intensity_threshold}",
                  color='red', va='top', ha='left', fontsize=10)
     axes[0].set_title("Summed Intensity (0–45)")
 
