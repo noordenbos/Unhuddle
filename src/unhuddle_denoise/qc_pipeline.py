@@ -105,7 +105,7 @@ def perform_dr_filtering(adata, radius, good_frac=0.75):
     dr_key = next((k for k in adata.obsm if k.startswith('X_') and k != 'X_spatial'), None)
 
     if dr_key is None:
-        print("No DR embedding found in .obsm (e.g., X_tsne, X_umap). Skipping DR filtering. Consider adding Dimension reduction coordinates")
+        logger.info("No DR embedding found in .obsm (e.g., X_tsne, X_umap). Skipping DR filtering. Consider adding Dimension reduction coordinates")
         adata.obs['QC_fraction_filtered'] = np.nan
         adata.obs['QC_dr_based_filter'] = False
         return adata
