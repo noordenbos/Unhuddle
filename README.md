@@ -306,6 +306,7 @@ For each FOV (field of view) folder, the following stages are run:
 
 ## 🧽 Denoising (Optional)  
 <img src="assets/images/example_denoise_fit.png" alt="logo" width="350" align="right"/>  
+
 ### 4. **Cohort-Level Signal/Noise Decomposition**
 - If `--use_denoised` is enabled:
   - A **piecewise linear model** is fit per marker using cell **area** and summed membrane-exclusion signal.
