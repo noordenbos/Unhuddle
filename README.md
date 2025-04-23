@@ -7,9 +7,29 @@
 
 <br>UNHUDDLE is an algorithm designed to resolve signal in densely packed tissue regions — or "cell huddles" — in multiplex spatial proteomics, where traditional absolute segmentation introduces 'neighbor noise' and blur the phenotypic signal.
 
-On the cell to cell borderpixels, shared signal is observed due to 1 resolution issues, 2 lateral bleed/signal spill and 3 z-projection. Unhuddle knows the cell's neighbors, measures their mean intensity and reallocates the bordersignal to the rightful owner. Unhuddle is equiped with an optional denoiser that may be very effective on your dataset if you have a total cell size of >100,000 (summation over all fovs on the same slide/session. Unhuddle values are normalized by average phenotype marker expression, defending against variation in overall staining intensity between fovs and consequently normalized by cell size (surface).
+On the cell to cell borderpixels, shared signal is observed due to  
+1. resolution issues,
+2. lateral bleed/signal spill and
+3. z-projection.  <br>
 
-By identifying stable, broadly expressed "normalisation markers" and performing per-cell normalization, UNHUDDLE enables more accurate within-cell-type comparison of functional markers (e.g., checkpoint proteins), even in spatially crowded microenvironments.
+Unhuddle knows the cell's neighbors, measures their claim to borderpixelintensity and reallocates the bordersignal to the rightful owner. Unhuddle is equiped with an optional denoiser that may be very effective on your dataset if you have a total cell number of >100,000 (however the more the better). NB total cell number is a summation over all fovs on the same staining/aquisition batch. 
+
+Unhuddle values are normalized by average phenotype marker expression, defending against variation in overall staining intensity between fovs and consequently normalized by cell size (surface). By identifying stable, broadly expressed "normalisation markers" and performing per-cell normalization, UNHUDDLE enables more accurate within-cell-type comparison of functional markers (e.g., checkpoint proteins), even in spatially crowded microenvironments. 
+
+The Unhuddle pipeline is built to empower all curious scientists — whether you're a coding pro or just getting started. While you’ll need to install Python and interact with the command line, our walkthrough makes this process straightforward and accessible.
+
+Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, producing a comprehensive AnnData object that packages your cell-level features, masks, spatial coordinates, and marker intensities — all ready for analysis. If you don’t already have segmentation masks, Unhuddle can optionally generate them for you using DeepCell-Mesmer, enabling a truly end-to-end experience.
+
+Before you start, we highly recommend applying pixel-level denoising to your raw image data. Denoising improves signal clarity, reduces spillover and autofluorescence artifacts, and often leads to better quantification and phenotype classification.
+
+Several open-source tools exist for this purpose:
+
+🔬 PENGUIN – a GUI in notebook for preprocessing of multiplexed tissue images. https://github.com/deMirandaLab/PENGUIN (accessible heuristic method)
+
+🧼 IMC-Denoise – Content-aware pipeline that enhances Imaging Mass Cytometry data by combining pixel-level artifact removal and self-supervised noise suppression to improve image quality and downstream single-cell analysis. https://github.com/PENGLU-WashU/IMC_Denoise (deeplearning based method)
+
+Once your data is denoised, Unhuddle takes care of the rest — integrating morphometrics, reallocation models, functional normalization, and quality control in one modular framework. The resulting AnnData object can be extended with your own metadata or omics layers and is fully compatible with Scanpy and SpaceCat workflows. We've included example Jupyter notebooks to help you dive into downstream analyses and visualizations.
+
 
 ## 🚀 Getting Started with UNHUDDLE
 
@@ -596,58 +616,7 @@ This provides a simple per-unit-area normalization, which may be preferable in s
 ✅ Python Compatibility:
 Requires Python 3.8 or higher
 
-🧰 Core Dependencies:
-
-numpy, pandas — numerical and tabular processing
-
-scikit-image, scipy, tifffile — image and mask operations
-
-selenium, requests — automation for DeepCell.org
-
-tqdm — progress bar visualization
-
-🧠 Image Input Expectations:
-
-Marker files should follow the pattern: {marker}.ome.tiff
-
-Data shape: H x W (2D)
-
-Data type: float32 or float64 (from denoising like PENGUIN)
-
-🧩 Segmentation Mask Guidelines:
-
-Auto-detected via --mask_pattern (default: *_0.tiff)
-
-Must be 2D (H x W) or stack format (Z x H x W, Z is squeezed)
-
-If no mask is provided, DeepCell can generate one using --create_deepcell_mask
-
-🔖 Label Convention:
-
-Each cell should have a unique integer label
-
-These labels form the link between segmentation, intensity, and feature CSVs
-
-Optional: match {fov}_{label} for external compatibility
-
-🚀 Parallel Processing:
-
-Use --max_workers to process multiple FOVs concurrently
-
---check_output_exist skips already-processed FOVs
-
-💡 Normalisation Markers:
-
-Markers like CD3, CD45, Vimentin used for intra-cell normalization
-
-Must be broadly expressed and phenotype-informative
-
-Crucial for deconvolution of functional marker signal
-
 ## 📊 Coming Soon
-Graphical breakdown of reallocation logic
-Support for additional normalization schemes (e.g. quantile)
-
 UNHUDDLE will be installable via `pip install unhuddle`
 
 ## 📣 Citation & License
