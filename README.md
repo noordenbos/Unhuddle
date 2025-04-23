@@ -84,7 +84,9 @@ base_path/
 ```
 Each FOV folder should contain:
 - Denoised marker images (`{marker}.ome.tiff`, shape: `H x W`, dtype: `float32/64`)
-- Optionally: a segmentation mask (`*.tiff`, shape:   `H x W` or `Z x H x W`, dtype: `uint16`) NB do not use *ome.tiff for the mask
+- Optionally: a segmentation mask (`*.tiff`, shape:   `H x W` or `Z x H x W`, dtype: `uint16`)  
+  NB do not use *ome.tiff for the mask  
+  NB the pipeline will detect and squeeze the Z dimension automatically)  
   If a mask is not provided, one can be generated using `--create_deepcell_mask`.
 
 🎯**protip:**  
@@ -354,17 +356,22 @@ For each FOV (field of view) folder, the following stages are run:
 
 ### 7. **DeepCell Mask Creation**
 - If `--create_deepcell_mask` is enabled:
-  - RGB overlays are generated from marker channels
+  - RGB overlays are constructed from marker images to highlight relevant structures for segmentation.
+  - By default, the overlay uses the markers specified in `--normalisation_markers` and `--nuclear_markers`.
+  - You can **override the default overlay composition** using:
+    - `--membrane_markers_overlay`
+    - `--nuclear_markers_overlay`
   - Uploaded to [DeepCell.org](https://deepcell.org) using a headless Selenium session
   - Results are downloaded and integrated into downstream segmentation
+
+---
+
 
 ### 8. **AnnData Object Creation**
 - If `--create_adata` is used:
   - All per-FOV features, masks, and normalized intensities are assembled into a single `.h5ad` file
   - Includes QC flags, overlays, and spatial information
   - Compatible with `scanpy`, `napari`, and `SpaceCat` pipelines
-
----
 
 ### 9. **Automated Filtering & Embedding QC**
 - Performed automatically on the assembled AnnData object
