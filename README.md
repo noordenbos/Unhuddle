@@ -30,6 +30,7 @@ Several open-source tools exist for this purpose:
 
 Once your data is denoised, Unhuddle takes care of the rest — integrating morphometrics, reallocation models, functional normalization, and quality control in one modular framework. The resulting AnnData object can be extended with your own metadata or omics layers and is fully compatible with Scanpy and SpaceCat workflows. We've included example Jupyter notebooks to help you dive into downstream analyses and visualizations.
 
+<img src="assets/images/unhuddle_pipeline_final.png" alt="pipe" width="1000" align="left"/>  
 
 ## 🚀 Getting Started with UNHUDDLE
 
