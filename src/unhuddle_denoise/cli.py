@@ -2,6 +2,7 @@
 
 import os
 import logging
+import pandas as pd
 from functools import partial
 from unhuddle_denoise.cli_helpers import (
     parse_arguments,
