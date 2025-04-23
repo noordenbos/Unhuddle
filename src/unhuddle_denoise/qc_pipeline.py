@@ -202,7 +202,7 @@ def generate_dr_plot(adata, qc_dir):
     dr_key = next((k for k in adata.obsm if k.startswith('X_') and k != 'X_spatial'), None)
 
     if dr_key is None:
-        logger.warning("⚠️ No DR embedding found in .obsm. Skipping DR plot.")
+        logger.info("No DR embedding found in .obsm. Skipping DR plot.")
         return
 
     coords = adata.obsm[dr_key]
@@ -310,7 +310,7 @@ def print_success_guide(output_base_path):
     Print user-friendly summary of QC outputs.
     """
     qc_dir, density_dir, seg_dir, sb_dir = create_directories(output_base_path)
-    print("🎉 QC pipeline completed successfully! Here are your outputs:")
+    print("🎉 QC pipeline completed successfully! Here are your visual and numeric outputs:")
     print(f" - Density maps:           {density_dir}")
     print(f" - Segmentation overlays:  {seg_dir}")
     print(f" - Storyboards:            {sb_dir}")
@@ -318,15 +318,15 @@ def print_success_guide(output_base_path):
     # Print conditionally if DR filtering was performed
     dr_plot = os.path.join(qc_dir, 'dr_qc.png')
     if os.path.exists(dr_plot):
-        print(f" - DR QC plot:             {dr_plot}")
+        print(f" - Dimension Reduction QC plot:             {dr_plot}")
 
     overall_stats = os.path.join(qc_dir, 'overall_stats.csv')
     if os.path.exists(overall_stats):
-        print(f" - Overall stats CSV:      {overall_stats}")
+        print(f" - Overall filtering stats CSV:      {overall_stats}")
 
     per_fov_stats = os.path.join(qc_dir, 'per_fov_stats.csv')
     if os.path.exists(per_fov_stats):
-        print(f" - Per-FOV stats CSV:      {per_fov_stats}")
+        print(f" - Per-FOV filtering stats CSV:      {per_fov_stats}")
 import os
 import numpy as np
 import matplotlib.pyplot as plt
@@ -392,7 +392,7 @@ def generate_cohort_normalization_qc(
 
     # ── Check layer availability ────────────────────────────────────────────────
     if layer_weighted not in adata.layers:
-        logger.warning(f"⚠️ Layer '{layer_weighted}' not found in adata. Falling back to '{layer_raw}' for weighted normalization.")
+        logger.info(f"Layer '{layer_weighted}' not found in adata. Falling back to '{layer_raw}' for normalization. Consider flag --use denoise.")
         layer_weighted = layer_raw  # fallback to raw if denoised not available
 
     if layer_area not in adata.layers:
@@ -493,7 +493,7 @@ def run_qc_from_memory(args, adata):
         dr_bad = int(adata.obs['QC_dr_based_filter'].sum())
         logger.info(f'🔧 Post-DR filter count: bad_dr_cluster = {dr_bad}')
     else:
-        logger.warning("⚠️ DR-based filtering skipped or failed — no 'QC_dr_based_filter' in obs.")
+        logger.info("DR-based filtering skipped or failed — no 'QC_dr_based_filter' in obs. Consider adding dimension reduction coordinates")
 
     # ── 5. Segmentation Overlays ──────────────────────────────────────────────────
     logger.info('🎨 Segmentation overlays')

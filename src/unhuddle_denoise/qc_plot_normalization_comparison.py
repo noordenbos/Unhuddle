@@ -3,6 +3,8 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
+import logging
+logger = logging.getLogger(__name__)
 
 def plot_sensor_marker_counts(marker_counts, output_path):
     """
@@ -106,12 +108,15 @@ def plot_marker_distribution_storyboard(raw_df, norm_df_weighted, norm_df_area, 
 
     for i, marker in enumerate(marker_subset):
         ax = axes[i]
-        sns.kdeplot(raw_df[marker], label="Raw", ax=ax, linestyle='--')
-        sns.kdeplot(norm_df_weighted[marker], label="Weighted", ax=ax)
-        sns.kdeplot(norm_df_area[marker], label="Raw / Area", ax=ax)
+        sns.kdeplot(raw_df[marker], label="Raw", ax=ax, linestyle='--', warn_singular=False)
+        sns.kdeplot(norm_df_weighted[marker], label="Weighted", ax=ax, warn_singular=False)
+        sns.kdeplot(norm_df_area[marker], label="Raw / Area", ax=ax, warn_singular=False)
+
         ax.set_title(marker)
         ax.set_xlabel("Intensity")
-        ax.legend(fontsize=6)
+        handles, labels = ax.get_legend_handles_labels()
+        if handles:
+            ax.legend(fontsize=6)
 
     for j in range(i + 1, len(axes)):
         axes[j].axis("off")
