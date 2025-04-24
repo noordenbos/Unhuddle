@@ -33,7 +33,7 @@ Once your data is preprocessed, Unhuddle takes care of the rest — integrating 
 
 ## 🚀 Getting Started with UNHUDDLE
 
-### 📥 1. Clone the Repository
+## 📥 1. Clone the Repository
 via https
 ```bash
 git clone https://github.com/tbee05/unhuddle_denoise.git
@@ -44,7 +44,7 @@ via ssh
 git clone git@github.com:tbee05/unhuddle_denoise.git
 cd unhuddle_denoise
 ```
-### 📦 2. Set Up a Virtual Environment
+## 📦 2. Set Up a Virtual Environment
 Using venv:
 ```bash
 python -m venv unhuddle-denoise
@@ -56,19 +56,19 @@ conda create -n unhuddle-denoise -y
 conda activate unhuddle-denoise
 conda install pip
 ```
-### 🛠️ 3. Install UNHUDDLE in Editable Mode
+## 🛠️ 3. Install UNHUDDLE in Editable Mode
 ```bash
 pip install -e .
 ```
 This installs unhuddle as a CLI tool available from anywhere in your terminal.
 
-### ✅ 4. Verify Installation
+## ✅ 4. Verify Installation
 ```bash
 unhuddle-denoise --help
 ```
 Should print a list of CLI arguments and options.
 
-### 🗂️ 5. Check Input Requirements
+## 🗂️ 5. Check Input Requirements
 
 The base input directory should contain one folder per FOV:
 
@@ -99,7 +99,7 @@ base_path/
 ├── P23_1/
 │   ├── CD3.ome.tiff
 ```
-### 🧪 6. Run the Pipeline on Included Demo Data
+## 🧪 6. Run the Pipeline on Included Demo Data
 linux:
 ```bash
 unhuddle-denoise \
@@ -109,8 +109,7 @@ unhuddle-denoise \
   --normalisation_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 \
   --create_nuclear_mask \
   --max_workers 1 \
-  --create_adata \
-  --use_denoise
+  --create_adata
 ```
 windows powershell
 ```powershell
@@ -121,17 +120,17 @@ unhuddle-denoise `
   --normalisation_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 `
   --create_nuclear_mask `
   --max_workers 1 `
-  --create_adata `
-  --use_denoise
+  --create_adata
 ```
 
 
-## 🌐 DeepCell Integration
-UNHUDDLE can upload overlays to DeepCell.org using Selenium and Firefox with the geckodriver — no GUI required.
-This enables an end-to-end pipeline, from pixeldata to Unhuddled single cell profiles.
+## 🌐 7. DeepCell Integration
+
+UNHUDDLE can upload overlays to [DeepCell.org](https://deepcell.org) using Selenium and Firefox with GeckoDriver — **no GUI interaction required**. This enables a fully automated pipeline from raw pixel data to single-cell DeepCell predictions.
+
 ### 🛠️ Manual Setup: Firefox + GeckoDriver
 
-If Firefox is not available on your system, follow these steps to install both Firefox and GeckoDriver locally into `~/tools` or `%USERPROFILE%\tools`.
+If Firefox or GeckoDriver is not already installed, follow these steps to install both locally in `~/tools` or `%USERPROFILE%\tools`.
 
 ---
 
@@ -146,10 +145,17 @@ wget "https://download.mozilla.org/?product=firefox-latest&os=linux64&lang=en-US
 tar -xjf firefox.tar.bz2
 ```
 
-Firefox will now be at:
+Firefox will now be available at:
 ```bash
 $HOME/tools/firefox/firefox
 ```
+
+💡 To make it available system-wide:
+```bash
+export PATH="$HOME/tools/firefox:$PATH"
+```
+
+👉 Add that line to your `.bashrc` or `.zshrc` to make it permanent.
 
 ### 🧭 2. Install GeckoDriver
 ```bash
@@ -164,6 +170,11 @@ chmod +x geckodriver
 $HOME/tools/geckodriver
 ```
 
+💡 Add to PATH:
+```bash
+export PATH="$HOME/tools:$PATH"
+```
+
 </details>
 
 ---
@@ -172,14 +183,17 @@ $HOME/tools/geckodriver
 <summary><strong>🍎 macOS Instructions</strong></summary>
 
 ### 🦊 1. Install Firefox
-Download from the official website:
+Download from:  
+[https://www.mozilla.org/en-US/firefox/new/](https://www.mozilla.org/en-US/firefox/new/)
 
-🔗 https://www.mozilla.org/en-US/firefox/new/
-
-Or for a portable install:
-- Drag `Firefox.app` into a custom folder, e.g.:
+Or manually place `Firefox.app` in a custom folder like:
 ```bash
 $HOME/tools/Firefox.app
+```
+
+💡 To use it in scripts:
+```bash
+export PATH="$HOME/tools/Firefox.app/Contents/MacOS:$PATH"
 ```
 
 ### 🧭 2. Install GeckoDriver
@@ -195,6 +209,11 @@ chmod +x geckodriver
 $HOME/tools/geckodriver
 ```
 
+💡 Add to PATH:
+```bash
+export PATH="$HOME/tools:$PATH"
+```
+
 </details>
 
 ---
@@ -203,13 +222,17 @@ $HOME/tools/geckodriver
 <summary><strong>🪟 Windows Instructions (PowerShell)</strong></summary>
 
 ### 🦊 1. Install Firefox
-Download from the official site:
+Download from:  
+[https://www.mozilla.org/en-US/firefox/new/](https://www.mozilla.org/en-US/firefox/new/)
 
-🔗 https://www.mozilla.org/en-US/firefox/new/
-
-Use the custom install option to place it in:
+During installation, choose **Custom Setup** and install to:
 ```
 %USERPROFILE%\tools\Firefox
+```
+
+💡 Add this to your system `PATH`:
+```powershell
+[System.Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\tools\Firefox", [System.EnvironmentVariableTarget]::User)
 ```
 
 ### 🧭 2. Install GeckoDriver
@@ -223,7 +246,12 @@ Expand-Archive -Path "$toolsDir\geckodriver.zip" -DestinationPath $toolsDir -For
 Remove-Item "$toolsDir\geckodriver.zip"
 ```
 
-✅ GeckoDriver path:
+💡 Add GeckoDriver to your `PATH`:
+```powershell
+[System.Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\tools", [System.EnvironmentVariableTarget]::User)
+```
+
+✅ GeckoDriver will now be available as:
 ```
 %USERPROFILE%\tools\geckodriver.exe
 ```
@@ -233,43 +261,21 @@ Remove-Item "$toolsDir\geckodriver.zip"
 ---
 
 <details>
-  <summary><strong>🧪 Verify Installation</strong></summary>
+<summary><strong>🧪 Verify Installation</strong></summary>
 
-Run in terminal or PowerShell:
+Run these to check that Firefox and GeckoDriver are installed correctly:
+
+#### 🐧 macOS / Linux:
 ```bash
 $HOME/tools/firefox/firefox --version
 $HOME/tools/geckodriver --version
 ```
 
-Or in Windows:
+#### 🪟 Windows PowerShell:
 ```powershell
 & "$env:USERPROFILE\tools\Firefox\firefox.exe" --version
 & "$env:USERPROFILE\tools\geckodriver.exe" --version
-```  
-</details>
-
-
-
-### 🚀🚀🚀 7. Run the Full End-to-End Pipeline
-
-🎯 **Pro Tip:** Add `--list_available_markers` to double-check which markers are detected.  
-🎯 **Pro Tip:** Add `--check_output_exist` to skip FOVs that already have output and avoid recomputation.  
-<details>
-<summary>🎯 𝗣𝗿𝗼 𝗧𝗶𝗽: Download Additional Demo Data for Testing of the Denoiser (click to expand)</summary>
-
-The following commands will automatically download and unpack all available demo FOVs into `demodata/{FOV}` using the latest GitHub release.
-
-#### 🐧 Linux / macOS / WSL
-```bash
-mkdir -p demodata && curl -s https://api.github.com/repos/Tbee05/Unhuddle-denoise/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata/$fov && wget -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata/$fov --strip-components=1 && rm ${fov}.tar.gz; done
 ```
-
-#### 🪟 Windows (PowerShell)
-```powershell
-Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle-denoise/releases/latest | Select-Object -ExpandProperty assets | Where-Object { $_.name -like "*.zip" } | ForEach-Object { $fov = $_.name -replace ".zip",""; New-Item -ItemType Directory -Force -Path "demodata\$fov"; Invoke-WebRequest -Uri $_.browser_download_url -OutFile "$fov.zip"; Expand-Archive -Path "$fov.zip" -DestinationPath "demodata\$fov"; Remove-Item "$fov.zip" }
-```
-
-📂 Result: Each downloaded dataset will be extracted into its own `demodata/{FOV}` folder — ready for direct use with the UNHUDDLE pipeline with the `--use_denoise` flag enabled.
 
 </details>
 
@@ -277,34 +283,49 @@ Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle-denoise/releases/
 ---
 
 
-linux:
+
+
+## 🚀 8. Run the Full End-to-End Pipeline
+
+
+<details>
+<summary>🎯 𝗣𝗿𝗼 𝗧𝗶𝗽: Download Additional Demo Data for Testing of the Denoiser (click to expand)</summary>
+
+The following commands will automatically download and unpack all available demo FOVs into `demodata/{FOV}` using the latest GitHub release.
+
+#### 🐧 Linux / macOS / WSL
 ```bash
-unhuddle \
-  --base_path path/to/dir_containing_individual_fov_folders \
-  --output_base_path path/to/unhuddle_output \
-  --normalisation_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 \
-  --nuclear_markers DNA1 DNA2 HistoneH3 \
-  --create_nuclear_mask \
-  --create_deepcell_mask \
-  --deepcell_resolution 10 \
-  --geckodriver_path path/to/geckodriver_binary \
-  --max_workers 1 \
-  --create_adata
+mkdir -p demodata && curl -s https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata/$fov && wget -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata/$fov --strip-components=1 && rm ${fov}.tar.gz; done
 ```
-windows powershell
+
+#### 🪟 Windows (PowerShell)
 ```powershell
-unhuddle `
-  --base_path path\to\dir_containing_individual_fov_folders `
-  --output_base_path path\to\unhuddle_output `
-  --normalisation_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 `
-  --nuclear_markers DNA1 DNA2 HistoneH3 `
-  --create_nuclear_mask `
-  --create_deepcell_mask `
-  --deepcell_resolution 10 `
-  --geckodriver_path path\to\geckodriver_binary `
-  --max_workers 1 `
-  --create_adata
+Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | % { $_.assets } | ? { $_.name -like "*.zip" } | % { $fov = $_.name -replace ".zip",""; New-Item -ItemType Directory -Force -Path "demodata\$fov" | Out-Null; Invoke-WebRequest -Uri $_.browser_download_url -OutFile "$fov.zip"; Expand-Archive -Path "$fov.zip" -DestinationPath "demodata\$fov"; Remove-Item "$fov.zip" }
 ```
+
+📂 Result: Each downloaded dataset will be extracted into its own `demodata/{FOV}` folder — ready for direct use with the UNHUDDLE pipeline with the `--use_denoise` flag enabled.
+
+</details>  
+
+---
+
+
+- **First test on the extensions on the demodata**
+- Add `--use_denoise` if you've downloaded the additional demodata
+- Add `--create_deepcell_mask` and `--geckodriver_path` if Firefox + GeckoDriver are installed
+
+- 🚀🚀 **Ready for your own data?**
+    - Replace `--base_path demodata` with the actual path to your folder containing `{FOV}\` subdirectories
+    - use `--list_available_markers` and run the command
+    - update the `--nuclear_markers` and the `normalisation_markers` (tip the normalisation markers give a rather ON/OFF signal, while other 'functional' markers are more normal distributed)
+    - have your own masks? Add `--mask_pattern` -->Glob pattern to find your mask (e.g. `*_mask.tiff`). NB do not use `*.ome.tiff`
+    - you do not have your own masks? Try the deepcell webloader function! Make sure to install firefox and geckodriver, add the flags `--create_deepcell_mask` and `--geckodriver_path`.
+      - run the pipeline and check the overlay files, want to adapt the markers used for the overlay? use the overrides: `--nuclear-markers_overlay` and `--membrane-markers_overlay`, rerun.
+    - Try `use_denoise`, the pipeline will calculate the number of total cells and will inform you when there is less than 100.000 cells, you can choose to skip denoise at that stage. Inspect the denoiser_QC.pdf!
+    - Inspect all QC. Are you happy? Use the unhuddleRun dimension reduction using your favorite algorithm (currently not supported in Unhuddle) and load the coordinates in the pipeline using `--add_dimension_reduction`, `--coord_cols` and `--check_output_exist`. Rerun and you will see you filtering results in your dimension reduction render, which will be very helpful during phenotyping.
+    - Did your phenotyping? Load the phenotypes as obs in your adata object! Add your metadata and your other omic data.
+    - Not a pro in using scanpy and adata for analysis and visualisation? Use your favorite LLM and instruct the chatbot with the organisation of your object and just ask to give you jupyter notebook snippets to project features on your dimension reduction plot, render tissue images color coded for the various cell types. Happy sciencing!
+
 
 ## ⚙️ Pipeline Overview
 
