@@ -283,7 +283,7 @@ $HOME/tools/geckodriver --version
 ---
 
 
-
+<br>
 
 ## 🚀 8. Run the Full End-to-End Pipeline
 
@@ -310,21 +310,22 @@ Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases
 ---
 
 
-- **First test on the extensions on the demodata**
+**First test on the extensions on the demodata**
 - Add `--use_denoise` if you've downloaded the additional demodata
 - Add `--create_deepcell_mask` and `--geckodriver_path` if Firefox + GeckoDriver are installed
 
-- 🚀🚀 **Ready for your own data?**
-    - Replace `--base_path demodata` with the actual path to your folder containing `{FOV}\` subdirectories
-    - use `--list_available_markers` and run the command
-    - update the `--nuclear_markers` and the `normalisation_markers` (tip the normalisation markers give a rather ON/OFF signal, while other 'functional' markers are more normal distributed)
-    - have your own masks? Add `--mask_pattern` -->Glob pattern to find your mask (e.g. `*_mask.tiff`). NB do not use `*.ome.tiff`
-    - you do not have your own masks? Try the deepcell webloader function! Make sure to install firefox and geckodriver, add the flags `--create_deepcell_mask` and `--geckodriver_path`.
-      - run the pipeline and check the overlay files, want to adapt the markers used for the overlay? use the overrides: `--nuclear-markers_overlay` and `--membrane-markers_overlay`, rerun.
+🚀🚀 **Ready for your own data?**  
+
+  - Replace `--base_path demodata` with the actual path to your folder containing `{FOV}\` subdirectories
+  - use `--list_available_markers` and run the command
+  - update the `--nuclear_markers` and the `normalisation_markers` (tip the normalisation markers give a rather ON/OFF signal, while other 'functional' markers are more normal distributed)
+  - have your own masks? Add `--mask_pattern` -->Glob pattern to find your mask (e.g. `*_mask.tiff`). NB do not use `*.ome.tiff`
+  - you do not have your own masks? Try the deepcell webloader function! Make sure to install firefox and geckodriver, add the flags `--create_deepcell_mask` and `--geckodriver_path`.
+  - run the pipeline and check the overlay files, want to adapt the markers used for the overlay? use the overrides: `--nuclear-markers_overlay` and `--membrane-markers_overlay`, rerun.
     - Try `use_denoise`, the pipeline will calculate the number of total cells and will inform you when there is less than 100.000 cells, you can choose to skip denoise at that stage. Inspect the denoiser_QC.pdf!
-    - Inspect all QC. Are you happy? Use the unhuddleRun dimension reduction using your favorite algorithm (currently not supported in Unhuddle) and load the coordinates in the pipeline using `--add_dimension_reduction`, `--coord_cols` and `--check_output_exist`. Rerun and you will see you filtering results in your dimension reduction render, which will be very helpful during phenotyping.
-    - Did your phenotyping? Load the phenotypes as obs in your adata object! Add your metadata and your other omic data.
-    - Not a pro in using scanpy and adata for analysis and visualisation? Use your favorite LLM and instruct the chatbot with the organisation of your object and just ask to give you jupyter notebook snippets to project features on your dimension reduction plot, render tissue images color coded for the various cell types. Happy sciencing!
+  - Inspect all QC. Are you happy? Use the unhuddleRun dimension reduction using your favorite algorithm (currently not supported in Unhuddle) and load the coordinates in the pipeline using `--add_dimension_reduction`, `--coord_cols` and `--check_output_exist`. Rerun and you will see you filtering results in your dimension reduction render, which will be very helpful during phenotyping.
+  - Did your phenotyping? Load the phenotypes as obs in your adata object! Add your metadata and your other omic data.
+  - Not a pro in using scanpy and adata for analysis and visualisation? Use your favorite LLM and instruct the chatbot with the organisation of your object and just ask to give you jupyter notebook snippets to project features on your dimension reduction plot, render tissue images color coded for the various cell types. Happy sciencing!
 
 
 ## ⚙️ Pipeline Overview
