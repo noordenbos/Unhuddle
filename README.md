@@ -118,7 +118,7 @@ cd unhuddle_denoise
 Using venv:
 ```bash
 python -m venv unhuddle-denoise
-source unhuddle-denoise/bin/activate      # On Windows: unhuddle\Scripts\activate
+source unhuddle-denoise/bin/activate      # On Windows: unhuddle-denoise\Scripts\activate
 ```
 or conda:
 ```bash
