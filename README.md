@@ -27,14 +27,16 @@ Before running UNHUDDLE, we **highly recommend pixel-level preprocessing** of yo
 - ✅ Saturation clipping (removal of oversaturated pixels)  
 - ✅ Background subtraction
 
-Several open-source tools are available to help with this (please cite appropriate if you use these tools):
+
+<details>
+<summary>Several open-source tools are available to help with this (click to expand):</summary>
 
 ---
 
 ### 🐧 **PENGUIN – Multiplex Tissue Image Preprocessing GUI**
 
 - A user-friendly graphical interface for preprocessing multiplexed tissue images
-- Available as a packaged **Streamlit app** within UNHUDDLE (or use the jupyter notebook widget version on the 🔗  [PENGUIN](https://github.com/deMirandaLab/PENGUIN) github.
+- Available as a packaged **Streamlit app** within UNHUDDLE (or use the jupyter notebook widget version on the 🔗  [PENGUIN](https://github.com/deMirandaLab/PENGUIN) github)
 
 
 
@@ -81,6 +83,8 @@ Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2
 - Best suited for high-noise or laser-induced artifact scenarios
 
 🔗 GitHub: [IMC-Denoise](https://github.com/PENGLU-WashU/IMC_Denoise)
+
+</details>
 
 Once your data is preprocessed, Unhuddle takes care of the rest — integrating morphometrics, reallocation models, functional normalization, and quality control in one modular framework. The resulting AnnData object can be extended with your own metadata or omics layers and is fully compatible with Scanpy and SpaceCat workflows. We've included example Jupyter notebooks to help you dive into downstream analyses and visualizations.
 
