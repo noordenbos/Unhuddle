@@ -9,6 +9,14 @@ from streamlit_image_comparison import image_comparison
 from streamlit_image_zoom import image_zoom
 from streamlit_cropper import st_cropper  # pip install streamlit-cropper
 from PIL import Image
+from pathlib import Path
+
+# Get the directory where app.py is located
+app_dir = Path(__file__).resolve().parent
+
+# Define default folders relative to app_dir
+default_input_folder = os.path.join(app_dir, 'demodata-raw')
+default_output_folder = os.path.join(app_dir, 'demodata-preprocessed')
 
 st.set_page_config(layout="wide")
 st.title("🐧 PENGUIN Preprocessing Streamlit")
@@ -18,8 +26,8 @@ col_sidebar, col_center, col_tracker = st.columns([1, 3.2, 0.6])
 
 # ─── Sidebar: data + parameters ─────────────────────────────────────────────
 with col_sidebar:
-    input_folder = st.text_input("Input folder", "/Users/tnoorden/unhuddle_denoise/demodata/")
-    output_folder = st.text_input("Output folder", "/Users/tnoorden/unhuddle_denoise/demodata/results/")
+    input_folder = st.text_input("Input folder", default_input_folder)
+    output_folder = st.text_input("Output folder", default_output_folder)
 
 all_files = glob(os.path.join(input_folder, "*", "*.ome.tiff"))
 col_sidebar.text(f"🔍 {len(all_files)} files found")
