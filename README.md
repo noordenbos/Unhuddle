@@ -22,14 +22,14 @@ Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, produc
 
 ## 🔧 **Preprocessing Your Raw Images**
 
-Before running UNHUDDLE, we **highly recommend pixel-level preprocessing** of your raw `.ome.tiff` images. This improves background removal and suppresses noise artifacts, which is crucial for high-fidelity single-cell analysis. At a minimum, preprocessing should include:
+Before running UNHUDDLE, we **highly recommend some minimal pixel-level preprocessing** of your raw `.ome.tiff` images. At a minimum, preprocessing should include:
 
-- ✅ Saturation clipping (removal of oversaturated pixels)  
+- ✅ 99th highest percentile clipping (removal of oversaturated pixels)  
 - ✅ Background subtraction
 
 
 <details>
-<summary>Several open-source tools are available to help with this (click to expand):</summary>
+<summary>Several open-source tools are available to help with IMC/MIBI data for this (click to expand):</summary>
 
 ---
 
