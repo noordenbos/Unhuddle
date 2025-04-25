@@ -1,0 +1,14 @@
+streamlit>=1.35,<2.0
+numpy
+pandas
+opencv-python-headless
+scikit-image
+tifffile
+Pillow
+matplotlib
+apeer-ometiff-library
+streamlit-image-comparison
+streamlit-drawable-canvas
+streamlit-image-zoom
+streamlit_cropper
+
