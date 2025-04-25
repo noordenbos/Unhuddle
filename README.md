@@ -82,8 +82,18 @@ Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2
         ```powershell
         pip install -r .\penguin_preproces\requirements.txt
         ```
- 
-5. **Download raw image data** Oneliners that will download and unpack all available raw demo FOVs into `demodata-raw/{FOV}` (1.5GB).
+       
+5. **Run the app**
+    ```bash
+    streamlit run app.py
+    ```
+
+
+<details>
+<summary> More raw data images needed to test this Streamlit version of PENGUIN? (expand!)</summary>
+
+
+**Download raw image data** Oneliners that will download and unpack all available raw demo FOVs into `demodata-raw/{FOV}` (1.5GB).
 
 #### 🐧 Linux / macOS / WSL
 ```bash
@@ -95,12 +105,10 @@ mkdir -p demodata-raw && curl -s https://api.github.com/repos/Tbee05/Unhuddle-ra
 Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | % { $_.assets } | ? { $_.name -like "*.zip" } | % { $fov = $_.name -replace ".zip",""; New-Item -ItemType Directory -Force -Path "demodata-raw\$fov" | Out-Null; Invoke-WebRequest -Uri $_.browser_download_url -OutFile "$fov.zip"; Expand-Archive -Path "$fov.zip" -DestinationPath "demodata-raw\$fov" -Force; Remove-Item "$fov.zip" -Force }
 ```
 
-       
-6. **Run the app**
-    ```bash
-    streamlit run app.py
-    ```
-    
+</details>
+
+
+
 </details>
 
 ---
