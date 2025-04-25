@@ -88,7 +88,7 @@ Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2
 
 Once your data is preprocessed, Unhuddle takes care of the rest — integrating morphometrics, reallocation models, functional normalization, and quality control in one modular framework. The resulting AnnData object can be extended with your own metadata or omics layers and is fully compatible with Scanpy and SpaceCat workflows. We've included example Jupyter notebooks to help you dive into downstream analyses and visualizations.
 
-<img src="assets/images/unhuddle_pipeline_final.png" alt="pipe" width="1100" align="left"/> 
+<img src="assets/images/unhuddle_pipeline_font11.png" alt="pipe" width="1100" align="left"/> 
 
 ## 🚀 Getting Started with UNHUDDLE
 
