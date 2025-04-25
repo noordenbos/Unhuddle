@@ -36,6 +36,7 @@ where = ["src"]
 
 [project.scripts]
 unhuddle-denoise = "unhuddle_denoise.cli:main"  # new entry point
+penguin-preprocess = "penguin_preprocess.app:main"
 
 [project.optional-dependencies]
 dev = [
