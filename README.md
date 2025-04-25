@@ -20,9 +20,9 @@ The Unhuddle pipeline is built to empower all curious scientists — whether you
 
 Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, producing a comprehensive AnnData object that packages your cell-level features, masks, spatial coordinates, and marker intensities — all ready for analysis. If you don’t already have segmentation masks, Unhuddle can optionally generate them for you using DeepCell-Mesmer, enabling a truly end-to-end experience.
 
-## 🔧 **Preprocessing Your Raw Images**
+### 🔧 **Preprocessing Your Raw Images**
 
-Before running UNHUDDLE, we **highly recommend some minimal pixel-level preprocessing** of your raw `.ome.tiff` images. At a minimum, preprocessing should include:
+Before running UNHUDDLE, we **highly recommend** some minimal pixel-level preprocessing of your raw `.ome.tiff` images. At a minimum, preprocessing should include:
 
 - ✅ 99th highest percentile clipping (removal of oversaturated pixels)  
 - ✅ Background subtraction
@@ -46,13 +46,24 @@ Before running UNHUDDLE, we **highly recommend some minimal pixel-level preproce
 #### 🔁 Step-by-step (Mac/Linux/Windows)
 
 Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2024). PENGUIN: A rapid and efficient image preprocessing tool for multiplexed spatial proteomics. bioRxiv, 2024-07. doi: https://doi.org/10.1101/2024.07.01.601513
-
-1. **Create a virtual environment**
+1. **Clone the Repository** (this is the same step as STEP 1 from the main flow, there is no need to clone twice)  
+    - via https:
+        ```bash
+        git clone https://github.com/tbee05/unhuddle_denoise.git
+        cd unhuddle_denoise
+        ```
+    - or via ssh:
+        ```powershell
+        git clone git@github.com:tbee05/unhuddle_denoise.git
+        cd unhuddle_denoise
+        ```
+        
+2. **Create a virtual environment** (make a dedicated environment for penguin)
     ```bash
     python -m venv .venv_penguin
     ```
 
-2. **Activate it**
+3. **Activate it**
     - On macOS/Linux:
         ```bash
         source .venv_penguin/bin/activate
@@ -62,12 +73,12 @@ Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2
         .venv_penguin\Scripts\activate
         ```
 
-3. **Install requirements**
+4. **Install requirements**
     ```bash
     pip install -r requirements.txt
     ```
 
-4. **Run the app**
+5. **Run the app**
     ```bash
     streamlit run app.py
     ```
