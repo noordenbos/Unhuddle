@@ -20,12 +20,67 @@ The Unhuddle pipeline is built to empower all curious scientists — whether you
 
 Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, producing a comprehensive AnnData object that packages your cell-level features, masks, spatial coordinates, and marker intensities — all ready for analysis. If you don’t already have segmentation masks, Unhuddle can optionally generate them for you using DeepCell-Mesmer, enabling a truly end-to-end experience.
 
-**External preprocessing:**  
-Before you start, we highly recommend applying some pixel-level preprocessing to your raw image data. This should include at minimum removal of oversaturated pixels and general background substraction. Several open-source tools exist for this purpose:
+## 🔧 **Preprocessing Your Raw Images**
 
-🔬 PENGUIN – a GUI in notebook for preprocessing of multiplexed tissue images. https://github.com/deMirandaLab/PENGUIN (accessible heuristic method)
+Before running UNHUDDLE, we **highly recommend pixel-level preprocessing** of your raw `.ome.tiff` images. This improves background removal and suppresses noise artifacts, which is crucial for high-fidelity single-cell analysis. At a minimum, preprocessing should include:
 
-🧼 IMC-Denoise – Content-aware pipeline that enhances Imaging Mass Cytometry data by combining pixel-level artifact removal and self-supervised noise suppression to improve image quality and downstream single-cell analysis. https://github.com/PENGLU-WashU/IMC_Denoise (deeplearning based method)
+- ✅ Saturation clipping (removal of oversaturated pixels)  
+- ✅ Background subtraction
+
+Several open-source tools are available to help with this (please cite appropriate if you use these tools):
+
+---
+
+### 🐧 **PENGUIN – Multiplex Tissue Image Preprocessing GUI**
+
+- A user-friendly graphical interface for preprocessing multiplexed tissue images
+- Available as a packaged **Streamlit app** within UNHUDDLE (or use the jupyter notebook widget version on the 🔗  [PENGUIN](https://github.com/deMirandaLab/PENGUIN) github.
+
+
+
+<details>
+<summary><strong>🧪 Launch the Streamlit version of PENGUIN</strong></summary>
+
+#### 🔁 Step-by-step (Mac/Linux/Windows)
+
+Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2024). PENGUIN: A rapid and efficient image preprocessing tool for multiplexed spatial proteomics. bioRxiv, 2024-07. doi: https://doi.org/10.1101/2024.07.01.601513
+
+1. **Create a virtual environment**
+    ```bash
+    python -m venv .venv_penguin
+    ```
+
+2. **Activate it**
+    - On macOS/Linux:
+        ```bash
+        source .venv_penguin/bin/activate
+        ```
+    - On Windows:
+        ```powershell
+        .venv_penguin\Scripts\activate
+        ```
+
+3. **Install requirements**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+4. **Run the app**
+    ```bash
+    streamlit run app.py
+    ```
+
+</details>
+
+---
+
+### 🧼 **IMC-Denoise – Deep Learning Denoising for IMC**
+
+- Content-aware denoising pipeline tailored for Imaging Mass Cytometry (IMC)  
+- Combines pixel artifact removal and self-supervised noise suppression  
+- Best suited for high-noise or laser-induced artifact scenarios
+
+🔗 GitHub: [IMC-Denoise](https://github.com/PENGLU-WashU/IMC_Denoise)
 
 Once your data is preprocessed, Unhuddle takes care of the rest — integrating morphometrics, reallocation models, functional normalization, and quality control in one modular framework. The resulting AnnData object can be extended with your own metadata or omics layers and is fully compatible with Scanpy and SpaceCat workflows. We've included example Jupyter notebooks to help you dive into downstream analyses and visualizations.
 
