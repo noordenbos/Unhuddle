@@ -9,7 +9,7 @@
 
 On the cell to cell borderpixels, shared signal is observed due to  
 1. resolution issues,
-2. lateral bleed/signal spill and
+2. lateral bleed/signal spill
 3. z-projection.  <br>
 
 Unhuddle knows the cell's neighbors, measures their claim to borderpixelintensity and reallocates the bordersignal to the rightful owner. Unhuddle is equiped with an optional denoiser that may be very effective on your dataset if you have a total cell number of >100,000 (however the more the better). NB total cell number is a summation over all fovs on the same staining/aquisition batch. 
