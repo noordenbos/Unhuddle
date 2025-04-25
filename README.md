@@ -127,6 +127,12 @@ Once your data is preprocessed, Unhuddle takes care of the rest — integrating 
 
 <img src="assets/images/unhuddle_pipeline_final.png" alt="pipe" width="1100" align="left"/> 
 
+
+---
+
+
+
+  
 ## 🚀 Getting Started with UNHUDDLE
 
 ## 📥 1. Clone the Repository
