@@ -74,10 +74,15 @@ Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2
         ```
 
 4. **Install requirements**
-    ```bash
-    pip install -r requirements.txt
-    ```
-
+    - On macOS/Linux:
+        ```bash
+        pip install -r ./penguin_preproces/requirements.txt
+        ```
+    - On Windows:
+        ```powershell
+        pip install -r .\penguin_preproces\requirements.txt
+        ```
+        
 5. **Run the app**
     ```bash
     streamlit run app.py
@@ -115,11 +120,20 @@ git clone git@github.com:tbee05/unhuddle_denoise.git
 cd unhuddle_denoise
 ```
 ## 📦 2. Set Up a Virtual Environment
-Using venv:
+Using `venv`
+
+- On macOS/Linux:
 ```bash
 python -m venv unhuddle-denoise
-source unhuddle-denoise/bin/activate      # On Windows: unhuddle-denoise\Scripts\activate
+source unhuddle-denoise/bin/activate
 ```
+
+- On Windows:
+```bash
+python -m venv unhuddle-denoise
+unhuddle-denoise\Scripts\activate
+```
+
 or conda:
 ```bash
 conda create -n unhuddle-denoise -y
