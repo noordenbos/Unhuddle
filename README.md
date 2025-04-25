@@ -82,12 +82,25 @@ Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2
         ```powershell
         pip install -r .\penguin_preproces\requirements.txt
         ```
-        
-5. **Run the app**
+ 
+5. **Download raw image data** Oneliners that will download and unpack all available raw demo FOVs into `demodata-raw/{FOV}` (1.5GB).
+
+#### 🐧 Linux / macOS / WSL
+```bash
+mkdir -p demodata-raw && curl -s https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata-raw/$fov && wget -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata/$fov --strip-components=1 && rm ${fov}.tar.gz; done
+```
+
+#### 🪟 Windows (PowerShell)
+```powershell
+Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | % { $_.assets } | ? { $_.name -like "*.zip" } | % { $fov = $_.name -replace ".zip",""; New-Item -ItemType Directory -Force -Path "demodata-raw\$fov" | Out-Null; Invoke-WebRequest -Uri $_.browser_download_url -OutFile "$fov.zip"; Expand-Archive -Path "$fov.zip" -DestinationPath "demodata-raw\$fov" -Force; Remove-Item "$fov.zip" -Force }
+```
+
+       
+6. **Run the app**
     ```bash
     streamlit run app.py
     ```
-
+    
 </details>
 
 ---
@@ -375,16 +388,16 @@ $HOME/tools/geckodriver --version
 <details>
 <summary>🎯 𝗣𝗿𝗼 𝗧𝗶𝗽: Download Additional Demo Data for Testing of the Denoiser (click to expand)</summary>
 
-The following commands will automatically download and unpack all available demo FOVs into `demodata/{FOV}` using the latest GitHub release.
+The following commands will automatically download and unpack all available demo FOVs into `demodata/{FOV}` using the latest GitHub release (1.5GB).
 
 #### 🐧 Linux / macOS / WSL
 ```bash
-mkdir -p demodata && curl -s https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata/$fov && wget -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata/$fov --strip-components=1 && rm ${fov}.tar.gz; done
+mkdir -p demodata && curl -s https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); [ -d demodata/$fov ] && rm -rf demodata/$fov/* || mkdir -p demodata/$fov; wget -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata/$fov --strip-components=1 && rm ${fov}.tar.gz; done
 ```
 
 #### 🪟 Windows (PowerShell)
 ```powershell
-Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | % { $_.assets } | ? { $_.name -like "*.zip" } | % { $fov = $_.name -replace ".zip",""; New-Item -ItemType Directory -Force -Path "demodata\$fov" | Out-Null; Invoke-WebRequest -Uri $_.browser_download_url -OutFile "$fov.zip"; Expand-Archive -Path "$fov.zip" -DestinationPath "demodata\$fov"; Remove-Item "$fov.zip" }
+Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | % { $_.assets } | ? { $_.name -like "*.zip" } | % { $fov = $_.name -replace ".zip",""; if (Test-Path "demodata\$fov") { Remove-Item "demodata\$fov\*" -Recurse -Force } else { New-Item -ItemType Directory -Force -Path "demodata\$fov" | Out-Null }; Invoke-WebRequest -Uri $_.browser_download_url -OutFile "$fov.zip"; Expand-Archive -Path "$fov.zip" -DestinationPath "demodata\$fov" -Force; Remove-Item "$fov.zip" -Force }
 ```
 
 📂 Result: Each downloaded dataset will be extracted into its own `demodata/{FOV}` folder — ready for direct use with the UNHUDDLE pipeline with the `--use_denoise` flag enabled.
