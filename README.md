@@ -36,7 +36,7 @@ Before running UNHUDDLE, we **highly recommend some minimal pixel-level preproce
 ### 🐧 **PENGUIN – Multiplex Tissue Image Preprocessing GUI**
 
 - A user-friendly graphical interface for preprocessing multiplexed tissue images
-- Available as a packaged **Streamlit app** within UNHUDDLE (or use the jupyter notebook widget version on the 🔗  [PENGUIN](https://github.com/deMirandaLab/PENGUIN) github)
+- Available as a packaged Streamlit app **integrated in UNHUDDLE** (or use the jupyter notebook widget version on the 🔗  [PENGUIN](https://github.com/deMirandaLab/PENGUIN) github)
 
 
 
