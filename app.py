@@ -14,10 +14,12 @@ from pathlib import Path
 # Get the directory where app.py is located
 app_dir = Path(__file__).resolve().parent
 
-# Define default folders relative to app_dir
-default_input_folder = os.path.join(app_dir, 'demodata-raw')
-default_output_folder = os.path.join(app_dir, 'demodata-preprocessed')
-os.mkdirs(default_output_folder, exist_ok=True)
+# Define default folders
+default_input_folder = app_dir / 'demodata-raw'
+default_output_folder = app_dir / 'demodata-preprocessed'
+
+# Create output folder if it doesn't exist
+default_output_folder.mkdir(parents=True, exist_ok=True)
 st.set_page_config(layout="wide")
 st.title("🐧 PENGUIN Preprocessing Streamlit")
 
