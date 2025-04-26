@@ -81,7 +81,7 @@ orig_pil = Image.fromarray(first_channel_preview(img_normalized))
 img_proc = IPrep.out_ratio2(img_normalized, th=threshold)
 img_proc = IPrep.percentile_filter(img_proc, percentile=percentile)
 
-proc_pil = Image.fromarray(first_channel_preview(img_proc))
+#proc_pil = Image.fromarray(first_channel_preview(img_proc))
 
 # ─── Central panel: Slider vs Interactive Zoom ──────────────────────────────
 with col_center:
