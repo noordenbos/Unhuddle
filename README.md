@@ -76,11 +76,11 @@ Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2
 4. **Install requirements**
     - On macOS/Linux:
         ```bash
-        pip install -r ./penguin_preproces/requirements.txt
+        pip install -r ./penguin_preprocess/requirements.txt
         ```
     - On Windows:
         ```powershell
-        pip install -r .\penguin_preproces\requirements.txt
+        pip install -r .\penguin_preprocess\requirements.txt
         ```
        
 5. **Run the app**
