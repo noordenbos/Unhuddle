@@ -95,14 +95,14 @@ Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2
 
 **Download raw image data** Oneliners that will download and unpack all available raw demo FOVs into `demodata-raw/{FOV}` (1.5GB).
 
-#### 🐧 Linux / macOS / WSL
+#### 🐧 Linux / macOS / WSL (make sure you are still in the unhuddle base directory!)
 ```bash
-mkdir -p demodata-raw && curl -s https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata-raw/$fov && wget -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata/$fov --strip-components=1 && rm ${fov}.tar.gz; done
+rm -rf demodata-raw && mkdir -p demodata-raw && curl -s https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata-raw/$fov && wget -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata-raw/$fov --strip-components=1 && rm ${fov}.tar.gz; done
 ```
 
-#### 🪟 Windows (PowerShell)
+#### 🪟 Windows (PowerShell) (make sure you are still in the unhuddle base directory!)
 ```powershell
-Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | % { $_.assets } | ? { $_.name -like "*.zip" } | % { $fov = $_.name -replace ".zip",""; New-Item -ItemType Directory -Force -Path "demodata-raw\$fov" | Out-Null; Invoke-WebRequest -Uri $_.browser_download_url -OutFile "$fov.zip"; Expand-Archive -Path "$fov.zip" -DestinationPath "demodata-raw\$fov" -Force; Remove-Item "$fov.zip" -Force }
+Remove-Item -Recurse -Force demodata-raw -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force -Path "demodata-raw" | Out-Null; Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | % { $_.assets } | ? { $_.name -like "*.zip" } | % { $fov = $_.name -replace ".zip",""; New-Item -ItemType Directory -Force -Path "demodata-raw\$fov" | Out-Null; Invoke-WebRequest -Uri $_.browser_download_url -OutFile "$fov.zip"; Expand-Archive -Path "$fov.zip" -DestinationPath "demodata-raw\$fov" -Force; Remove-Item "$fov.zip" -Force }
 ```
 
 </details>
