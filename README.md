@@ -97,7 +97,7 @@ Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2
 
 #### 🐧 Linux / macOS / WSL (make sure you are still in the unhuddle base directory!)
 ```bash
-rm -rf demodata-raw && mkdir -p demodata-raw && curl -s https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata-raw/$fov && wget -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata-raw/$fov --strip-components=1 && rm ${fov}.tar.gz; done
+rm -rf demodata-raw && mkdir -p demodata-raw && curl -s https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata-raw/$fov && wget --show-progress -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata-raw/$fov --strip-components=1 && rm ${fov}.tar.gz; done
 ```
 
 #### 🪟 Windows (PowerShell) (make sure you are still in the unhuddle base directory!)
@@ -161,7 +161,7 @@ python -m venv unhuddle-denoise
 unhuddle-denoise\Scripts\activate
 ```
 
-or conda:
+or `conda`:
 ```bash
 conda create -n unhuddle-denoise -y
 conda activate unhuddle-denoise
@@ -406,7 +406,7 @@ The following commands will automatically download and unpack all available demo
 
 #### 🐧 Linux / macOS / WSL
 ```bash
-mkdir -p demodata && curl -s https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); [ -d demodata/$fov ] && rm -rf demodata/$fov/* || mkdir -p demodata/$fov; wget -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata/$fov --strip-components=1 && rm ${fov}.tar.gz; done
+[ -d demodata ] && [ -f README.md ] && echo "Cleaning demodata..." && \rm -rf demodata && mkdir -p demodata && curl -s https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata/$fov; wget --show-progress -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata/$fov --strip-components=1 && rm ${fov}.tar.gz; done
 ```
 
 #### 🪟 Windows (PowerShell)
@@ -425,7 +425,7 @@ Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases
 - Add `--use_denoise` if you've downloaded the additional demodata
 - Add `--create_deepcell_mask` and `--geckodriver_path` if Firefox + GeckoDriver are installed
 
-🚀🚀 **Ready for your own data?**  
+🚀🚀 **Congrats you made it to the end of the tutorial. Ready for your own data?**  
 
   - Replace `--base_path demodata` with the actual path to your folder containing `{FOV}\` subdirectories
   - use `--list_available_markers` and run the command
