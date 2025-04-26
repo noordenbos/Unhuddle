@@ -65,14 +65,22 @@ if img_orig is None or img_orig.ndim < 2:
 if img_orig.ndim == 2:
     img_orig = np.expand_dims(img_orig, -1)
 
-img_proc = IPrep.normalize_channel_cv2_minmax(IPrep.remove_outliers(img_orig))
-img_proc = IPrep.out_ratio2(img_proc, th=threshold)
-img_proc = IPrep.percentile_filter(img_proc, percentile=percentile)
+# --- Step 1: remove outliers
+img_no_outliers = IPrep.remove_outliers(img_orig)
 
+# --- Step 2: normalize
+img_normalized = IPrep.normalize_channel_cv2_minmax(img_no_outliers)
+
+# --- Step 3: preview original after outlier removal + normalization
 def first_channel_preview(img):
     return (np.squeeze(img[..., 0]) * 255).astype(np.uint8)
 
-orig_pil = Image.fromarray(first_channel_preview(img_orig))
+orig_pil = Image.fromarray(first_channel_preview(img_normalized))
+
+# --- Step 4: proceed with further processing
+img_proc = IPrep.out_ratio2(img_normalized, th=threshold)
+img_proc = IPrep.percentile_filter(img_proc, percentile=percentile)
+
 proc_pil = Image.fromarray(first_channel_preview(img_proc))
 
 # ─── Central panel: Slider vs Interactive Zoom ──────────────────────────────
