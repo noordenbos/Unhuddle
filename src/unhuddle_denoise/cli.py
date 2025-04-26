@@ -93,7 +93,7 @@ def main():
     args.total_cells = count_total_cells_from_csvs(dirs["protein"])
     logger.info(f"📊 Total number of cells in cohort: {args.total_cells:,}")
 
-    if args.use_denoised and args.total_cells <= 200000:
+    if args.use_denoised and args.total_cells <= 100000:
         logger.warning(
             f"⚠️ Cohort contains only {args.total_cells:,} cells. "
             "Denoising may be unreliable below 100,000 cells."
