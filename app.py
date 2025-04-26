@@ -81,7 +81,7 @@ orig_pil = Image.fromarray(first_channel_preview(img_normalized))
 img_proc = IPrep.out_ratio2(img_normalized, th=threshold)
 img_proc = IPrep.percentile_filter(img_proc, percentile=percentile)
 
-#proc_pil = Image.fromarray(first_channel_preview(img_proc))
+proc_pil = Image.fromarray(first_channel_preview(img_proc))
 
 # ─── Central panel: Slider vs Interactive Zoom ──────────────────────────────
 with col_center:
@@ -91,7 +91,7 @@ with col_center:
     zoom_factor = st.slider("🔍 Zoom factor", min_value=1, max_value=20, value=1, step=1)
 
     # 2) Convert to PIL for slider comparison
-    orig_pil = Image.fromarray(first_channel_preview(img_orig))
+    #orig_pil = Image.fromarray(first_channel_preview(img_orig))
     proc_pil = Image.fromarray(first_channel_preview(img_proc))
 
     # 3) Apply zoom
