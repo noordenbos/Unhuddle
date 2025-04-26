@@ -73,7 +73,11 @@ img_normalized = IPrep.normalize_channel_cv2_minmax(img_no_outliers)
 
 # --- Step 3: preview original after outlier removal + normalization
 def first_channel_preview(img):
-    return (np.squeeze(img[..., 0]) * 255).astype(np.uint8)
+    ch = np.squeeze(img[..., 0])
+    ch = ch - ch.min()
+    ch = ch / ch.max() if ch.max() > 0 else ch
+    return (ch * 255).astype(np.uint8)
+
 
 orig_pil = Image.fromarray(first_channel_preview(img_normalized))
 
