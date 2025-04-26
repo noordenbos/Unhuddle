@@ -39,13 +39,20 @@ def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> Non
     console_handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
     root.addHandler(console_handler)
 
+    # ── Patch console stream for Unicode safety ───────
+    if hasattr(console_handler.stream, 'reconfigure'):
+        try:
+            console_handler.stream.reconfigure(encoding='utf-8', errors='ignore')
+        except Exception:
+            pass  # Safe fallback if reconfigure not supported
+
     # ── File Handler (if requested) ───────────────────
     if output_base_path:
         log_dir = os.path.join(output_base_path, "logs")
         os.makedirs(log_dir, exist_ok=True)
         log_path = os.path.join(log_dir, f"unhuddle_run_{datetime.now():%Y%m%d_%H%M%S}.log")
 
-        file_handler = logging.FileHandler(log_path)
+        file_handler = logging.FileHandler(log_path, encoding='utf-8')
         file_handler.setLevel(file_level)
         file_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
         root.addHandler(file_handler)
