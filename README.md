@@ -396,7 +396,7 @@ $HOME/tools/geckodriver --version
 
 <br>
 
-## 🚀 8. Run the Full End-to-End Pipeline
+## 🚀 8. Get more out of the data with Unhuddle extensions
 
 
 <details>
