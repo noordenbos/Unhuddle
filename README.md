@@ -217,7 +217,7 @@ unhuddle-denoise \
   --base_path demodata \
   --output_base_path results/unhuddle_output \
   --nuclear_markers DNA1 DNA2 HistoneH3 \
-  --normalisation_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 \
+  --normalisation_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 CD4 CD56 SMA TCRgd \
   --create_nuclear_mask \
   --max_workers 1 \
   --create_adata
@@ -228,7 +228,7 @@ unhuddle-denoise `
   --base_path demodata `
   --output_base_path results\unhuddle_output `
   --nuclear_markers DNA1 DNA2 HistoneH3 `
-  --normalisation_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 `
+  --normalisation_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 CD4 CD56 SMA TCRgd `
   --create_nuclear_mask `
   --max_workers 1 `
   --create_adata
