@@ -414,14 +414,17 @@ The following commands will automatically download and unpack all available demo
 Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | % { $_.assets } | ? { $_.name -like "*.zip" } | % { $fov = $_.name -replace ".zip",""; if (Test-Path "demodata\$fov") { Remove-Item "demodata\$fov\*" -Recurse -Force } else { New-Item -ItemType Directory -Force -Path "demodata\$fov" | Out-Null }; Invoke-WebRequest -Uri $_.browser_download_url -OutFile "$fov.zip"; Expand-Archive -Path "$fov.zip" -DestinationPath "demodata\$fov" -Force; Remove-Item "$fov.zip" -Force }
 ```
 
-📂 Result: Each downloaded dataset will be extracted into its own `demodata/{FOV}` folder — ready for direct use with the UNHUDDLE pipeline with the `--use_denoise` flag enabled.
+📂 The extended demodate set contains 134k cells, which allows you to rerun the UNHUDDLE pipeline with the `--use_denoise` flag
+tip: set a new outputfolder to not confuse with earlier runs.  
+Linux/MacOS: `--output_base_path results/unhuddle_extended_output`  
+Windows: `--output_base_path results\unhuddle_extended_output` 
 
 </details>  
 
 ---
 
 
-**First test on the extensions on the demodata**
+**Test the extensions on the demodata**
 - Add `--add_dimension_reduction dimension_reduction_demo`, `--coord_cols tsne_1 tsne_2` to integrate in adata object and get extended QC
 - Add `--use_denoise` if you've downloaded the additional demodata
 - Add `--create_deepcell_mask` and `--geckodriver_path /path/to/your/geckodriver` if Firefox + GeckoDriver are installed
