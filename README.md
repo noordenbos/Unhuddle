@@ -452,6 +452,36 @@ Windows: `--output_base_path results\unhuddle_extended_output`
 
 ## Congrats you made it to the end of the tutorial! 
 
+<details>
+<summary><strong>Inspect your adata object in jupyter notebook</strong></summary>
+
+```python
+import os
+import pandas as pd
+import anndata as ad
+
+# Paths
+print("Notebook working dir (sanity check):", os.getcwd())
+adata_path = "/results/unhuddle_output/adata_objects/adata1.h5ad"
+
+# Load AnnData
+adata = ad.read_h5ad(adata_path)
+adata
+```
+
+Will give you this summary object (for further usage see below):
+
+```
+AnnData object with n_obs × n_vars = 134299 × 39
+    obs: 'Area', 'Perimeter', 'Convex_Area', 'Solidity', 'BoundingBox_Area', 'Extent', 'Orientation', 'Eccentricity', 'Equivalent_Diameter', 'Major_Axis_Length', 'Minor_Axis_Length', 'Major_Minor_Axis_Ratio', 'Circularity', 'Form_Factor', 'Euler_Number', 'Nucleus_Area', 'Nucleus_Eccentricity', 'NC_Area_Ratio', 'Centroid_Deviation', 'Mean_DNA1_Intensity', 'Integrated_DNA1_Intensity', 'Mean_DNA2_Intensity', 'Integrated_DNA2_Intensity', 'Mean_HistoneH3_Intensity', 'Integrated_HistoneH3_Intensity', 'QC_no_nucleus', 'fov', 'patient_id', 'summed_intensity', 'total_intensity', 'QC_low_intensity_filter', 'QC_filter_low_quality_region', 'filtering_status', 'QC_fraction_filtered', 'QC_dr_based_filter', 'QC_final_keep'
+    uns: 'X_source', 'dr_source', 'fov-list', 'marker-list', 'patient_id-list', 'spatial'
+    obsm: 'X_spatial', 'X_tsne'
+    layers: 'ExclMem_Sum', 'sum_original', 'sum_unhuddle', 'sum_unhuddle_denoised'
+```
+  
+</details>  
+
+
 ---
 
 ---
