@@ -430,7 +430,7 @@ Windows: `--output_base_path results\unhuddle_extended_output`
 ```bash
 --output_base_path results_extended \
 --use_denoise \
---add_dimension_reduction demodata-tnse \
+--add_dimensionreduction_coords demodata-tnse \
 --coord_cols optsne_1 optsne_2
 ```
 
