@@ -425,9 +425,25 @@ Windows: `--output_base_path results\unhuddle_extended_output`
 
 
 **Test the extensions on the demodata**
-- Add `--add_dimension_reduction demodata-tnse`, `--coord_cols optsne_1 optsne_2` to integrate in adata object and get extended QC
-- Add `--use_denoise` if you've downloaded the additional demodata
-- Add `--create_deepcell_mask` and `--geckodriver_path /path/to/your/geckodriver` if Firefox + GeckoDriver are installed
+- If you've downloaded the additional demodata add these lines to the call (step 6) and run in a fresh output folder:  
+(make sure all your lines, but the last have a continuation indicator: `\`, for windows change to ` )  
+```bash
+--output_base_path results_extended \
+--use_denoise \
+--add_dimension_reduction demodata-tnse \
+--coord_cols optsne_1 optsne_2
+```
+
+
+- If Firefox + GeckoDriver are installed add these lines to the call (extended demodata not needed):  
+(make sure all your lines, but the last have a continuation indicator: `\`, for windows change to ` )
+```bash
+--create_deepcell_mask \
+--geckodriver_path /path/to/your/geckodriver
+``` 
+
+
+
 
 
 ---
