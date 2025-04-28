@@ -425,7 +425,7 @@ Windows: `--output_base_path results\unhuddle_extended_output`
 
 
 **Test the extensions on the demodata**
-- Add `--add_dimension_reduction dimension_reduction_demo`, `--coord_cols tsne_1 tsne_2` to integrate in adata object and get extended QC
+- Add `--add_dimension_reduction demodata-tnse`, `--coord_cols optsne_1 optsne_2` to integrate in adata object and get extended QC
 - Add `--use_denoise` if you've downloaded the additional demodata
 - Add `--create_deepcell_mask` and `--geckodriver_path /path/to/your/geckodriver` if Firefox + GeckoDriver are installed
 
