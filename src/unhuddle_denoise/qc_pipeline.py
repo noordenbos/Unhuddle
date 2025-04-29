@@ -361,92 +361,87 @@ def plot_intensity_distribution(adata, qc_dir, low_intensity_threshold):
     plt.savefig(out_path, dpi=150)
     plt.close()
 
-def generate_cohort_normalization_qc(
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+import math
+
+def qc_plot_normalization_comparison_from_X(
     adata,
-    var_names=None,
-    layer_weighted="sum_unhuddle_denoised",
-    layer_area="sum_original",
-    layer_raw="sum_unhuddle",
-    output_dir="qc_dir"
+    raw_layer="sum_unhuddle_denoised",
+    area_key="Area",
+    marker_subset=None,
+    pdf_all_rows_path="qc_all_cells_vs_area.pdf",
+    pdf_storyboard_path="qc_storyboard_per_marker.pdf"
 ):
-    import os
-    import numpy as np
-    import pandas as pd
-    import logging
+    raw_mat = adata.layers[raw_layer]
+    scaled_mat = adata.X  # Now from X
+    area = adata.obs[area_key].values
 
-    logger = logging.getLogger(__name__)
+    if marker_subset is None:
+        marker_subset = adata.var_names.tolist()
 
-    from .qc_plot_normalization_comparison import (
-        plot_sensor_marker_counts,
-        plot_intensity_compression,
-        plot_marker_correlation_heatmaps,
-        plot_marker_distribution_storyboard
-    )
+    marker_idx = [i for i, name in enumerate(adata.var_names) if name in marker_subset]
+    area_safe = np.where(area == 0, np.nan, area)
 
-    os.makedirs(output_dir, exist_ok=True)
-    if var_names is None:
-        var_names = adata.var_names.tolist()
-    marker_subset = var_names
+    with PdfPages(pdf_all_rows_path) as pdf:
+        for j in marker_idx:
+            name = adata.var_names[j]
+            raw = raw_mat[:, j]
+            raw_area_norm = raw / area_safe
+            scaled = scaled_mat[:, j]
 
-    logger.info("📊 Generating cohort-level normalization QC")
+            fig, axs = plt.subplots(1, 3, figsize=(12, 4), sharex=False)
 
-    # ── Check layer availability ────────────────────────────────────────────────
-    if layer_weighted not in adata.layers:
-        logger.info(f"Layer '{layer_weighted}' not found in adata. Falling back to '{layer_raw}' for normalization. Consider flag --use denoise.")
-        layer_weighted = layer_raw  # fallback to raw if denoised not available
+            axs[0].scatter(area, raw, s=2, alpha=0.3)
+            axs[0].set_title(f"{name} - Raw")
+            axs[0].set_xlabel("Area")
+            axs[0].set_ylabel("Intensity")
 
-    if layer_area not in adata.layers:
-        raise ValueError(f"Required area normalization layer '{layer_area}' not found in adata.")
+            axs[1].scatter(area, raw_area_norm, s=2, alpha=0.3)
+            axs[1].set_title(f"{name} - Raw / Area")
+            axs[1].set_xlabel("Area")
 
-    # ── Extract layers as DataFrames ────────────────────────────────────────────
-    mat_raw = adata.layers[layer_raw]
-    mat_weighted = adata.layers[layer_weighted]
-    if "Area" not in adata.obs.columns:
-        raise KeyError("❌ 'Area' column is missing from adata.obs. This is required for normalization QC.")
+            axs[2].scatter(area, scaled, s=2, alpha=0.3)
+            axs[2].set_title(f"{name} - Robust Scaled")
+            axs[2].set_xlabel("Area")
 
-    area_array = np.asarray(adata.obs["Area"])
-    mat_area = adata.layers[layer_area] / np.clip(area_array[:, None], 1e-5, None)
-    raw_df = pd.DataFrame(mat_raw, columns=var_names)
-    weighted_df = pd.DataFrame(mat_weighted, columns=var_names)
-    area_df = pd.DataFrame(mat_area, columns=var_names)
+            fig.suptitle(f"{name} normalization comparison")
+            plt.tight_layout()
+            pdf.savefig(fig)
+            plt.close()
 
-    # ── Compute marker counts per cell ──────────────────────────────────────────
-    marker_counts = (mat_weighted != 0).sum(axis=1)
+    with PdfPages(pdf_storyboard_path) as pdf:
+        n = len(marker_idx)
+        fig, axs = plt.subplots(n, 3, figsize=(10, 3 * n), sharex='col')
+        for i, j in enumerate(marker_idx):
+            name = adata.var_names[j]
+            raw = raw_mat[:, j]
+            raw_area_norm = raw / area_safe
+            scaled = scaled_mat[:, j]
 
-    # ── Plot 1: Sensor marker counts ────────────────────────────────────────────
-    plot_sensor_marker_counts(
-        marker_counts=marker_counts,
-        output_path=os.path.join(output_dir, "cohort_sensor_marker_counts.png")
-    )
+            axs[i, 0].scatter(area, raw, s=2, alpha=0.3)
+            axs[i, 0].set_ylabel(name)
 
-    # ── Plot 2: Intensity compression ───────────────────────────────────────────
-    plot_intensity_compression(
-        raw_df=raw_df,
-        norm_df_weighted=weighted_df,
-        norm_df_area=area_df,
-        marker_subset=marker_subset,
-        output_path=os.path.join(output_dir, "cohort_intensity_compression.png")
-    )
+            axs[i, 1].scatter(area, raw_area_norm, s=2, alpha=0.3)
 
-    # ── Plot 3: Correlation heatmaps ────────────────────────────────────────────
-    plot_marker_correlation_heatmaps(
-        raw_df=raw_df,
-        norm_df_weighted=weighted_df,
-        norm_df_area=area_df,
-        marker_subset=marker_subset,
-        output_path=os.path.join(output_dir, "cohort_marker_correlation.png")
-    )
+            axs[i, 2].scatter(area, scaled, s=2, alpha=0.3)
 
-    # ── Plot 4: Marker distribution storyboard ──────────────────────────────────
-    plot_marker_distribution_storyboard(
-        raw_df=raw_df,
-        norm_df_weighted=weighted_df,
-        norm_df_area=area_df,
-        marker_subset=marker_subset,
-        output_path=os.path.join(output_dir, "cohort_marker_distributions_storyboard.png")
-    )
+        axs[0, 0].set_title("Raw")
+        axs[0, 1].set_title("Raw / Area")
+        axs[0, 2].set_title("Robust Scaled")
 
-    logger.info("✅ Cohort-level normalization QC complete")
+        for ax in axs[-1, :]:
+            ax.set_xlabel("Area")
+
+        plt.tight_layout()
+        pdf.savefig(fig)
+        plt.close()
+
+    return "✅ Updated: Scaled data now taken from adata.X"
+
+
 
 
 def run_qc_from_memory(args, adata):
@@ -504,11 +499,12 @@ def run_qc_from_memory(args, adata):
     generate_storyboards(qc_dir, dens, seg, sb, list(region_map))
     # ── 6.5 Cohort-Level Normalization QC ───────────────────────────────────────────
     logger.info('📊 Cohort-level normalization QC')
-    generate_cohort_normalization_qc(
-        adata,
-        var_names=adata.var_names.tolist(),
-        output_dir=qc_dir
-    )
+    qc_plot_normalization_comparison_from_X(
+        adata=adata,
+        raw_layer="sum_unhuddle_denoised",
+        marker_subset=None,  # None for all, accept list as well
+        pdf_all_rows_path= os.path.join(qc_dir, "normalisation", "qc_all_rows.pdf")
+        pdf_storyboard_path= os.path.join(qc_dir, "normalisation", "qc_marker_storyboard.pdf")
 
     # ── 7. DR Plot ────────────────────────────────────────────────────────────────
     logger.info('📈 Filtering results in Dimension Reduction plot')

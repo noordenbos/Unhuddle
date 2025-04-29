@@ -6,96 +6,66 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def fully_weighted_normalize_and_scale(matrix, var_names, sensor_markers, max_n=4, min_relative_weight=0.01,
-                                       lower=0.1, upper=99.9):
+def adaptive_robust_scale_and_track(arr, initial_lower=1, initial_upper=99,
+                                    min_range=1e-3, min_lower=0.01, max_upper=99.99,
+                                    step=0.5):
+    arr = arr.astype(float)
+    arr_nonan = arr[np.isfinite(arr)]
+    arr_nonzero = arr_nonan[arr_nonan != 0]
+
+    lower = initial_lower
+    upper = initial_upper
+
+    while lower >= min_lower and upper <= max_upper:
+        p1, p99 = np.percentile(arr_nonzero, [lower, upper])
+        range_ = p99 - p1
+        if range_ > min_range:
+            scaled = (arr - p1) / range_
+            return np.clip(scaled, 0, 1), (lower, upper, p1, p99)
+        lower = max(min_lower, lower - step)
+        upper = min(max_upper, upper + step)
+
+    return np.zeros_like(arr), (None, None, None, None)
+
+
+def total_intensity_normalize_and_scale(matrix, var_names,
+                                        lower=1, upper=99, min_range=1e-3):
     """
-    Performs per-cell normalization using top sensor markers (weighted), followed by robust per-marker scaling.
+    Performs per-cell normalization using total summed intensity, followed by adaptive robust per-marker scaling.
 
     Parameters:
         matrix (np.ndarray): Raw intensity matrix (cells x markers)
-        var_names (list): List of marker names (length = matrix.shape[1])
-        sensor_markers (list): Markers used for per-cell normalization
-        max_n (int): Max number of sensor markers to use per cell
-        min_relative_weight (float): Minimum contribution threshold for a marker to be used
-        lower (float): Lower percentile for robust scaling
-        upper (float): Upper percentile for robust scaling
+        var_names (list): Marker names (len = matrix.shape[1])
+        lower, upper: Initial percentiles for robust scaling
+        min_range: Min dynamic range before loosening percentiles
 
     Returns:
         scaled_matrix (np.ndarray): Matrix after per-cell and per-marker normalization
-        marker_counts (np.ndarray): Number of sensor markers used per cell
+        cell_total (np.ndarray): Per-cell total intensity (scale used)
     """
-    marker_idx = [i for i, name in enumerate(var_names) if name in sensor_markers]
-    norm_matrix = np.zeros(matrix.shape, dtype=float)
-    marker_counts = np.zeros(matrix.shape[0], dtype=int)
+    cell_total = matrix.sum(axis=1)
+    norm_matrix = matrix / np.where(cell_total[:, None] == 0, np.nan, cell_total[:, None])
 
-    # --- Per-cell normalization using sensor markers ---
-    for i in range(matrix.shape[0]):
-        cell_values = matrix[i, marker_idx]
-        sorted_idx = np.argsort(cell_values)[::-1]
-        sorted_values = cell_values[sorted_idx]
-
-        top_value = sorted_values[0] if len(sorted_values) > 0 else 0
-        if top_value <= 0:
-            continue
-
-        relative_values = sorted_values / top_value
-        weights_mask = relative_values >= min_relative_weight
-        selected_raw_values = sorted_values[weights_mask][:max_n]
-        selected_relative_values = relative_values[weights_mask][:max_n]
-
-        marker_counts[i] = len(selected_raw_values)
-
-        if len(selected_raw_values) > 0:
-            weights = selected_relative_values
-            scale = np.average(selected_raw_values, weights=weights)
-            if scale > 0:
-                norm_matrix[i, :] = matrix[i, :] / scale
-
-    # --- Per-marker robust scaling with dynamic percentiles and fallback ---
     scaled_matrix = np.zeros_like(norm_matrix)
 
     for j in range(norm_matrix.shape[1]):
         col = norm_matrix[:, j]
         nonzero_mask = col != 0
-        nonzero_vals = col[nonzero_mask]
 
-        if len(nonzero_vals) > 0:
-            # compute fraction of nonzero cells
-            fraction_nonzero = len(nonzero_vals) / len(col)
-
-            # decide dynamic percentiles based on sparsity
-            if fraction_nonzero > 0.3:
-                lower_p, upper_p = 0.1, 99.9  # dense marker
-            elif fraction_nonzero > 0.05:
-                lower_p, upper_p = 1, 99  # medium sparse marker
-            else:
-                lower_p, upper_p = 10, 90  # very sparse marker
-
-            # compute percentiles
-            p1, p99 = np.percentile(nonzero_vals, [lower_p, upper_p])
-            logger.debug(f"[{var_names[j]}] {fraction_nonzero:.1%} nonzero → p{lower_p}-{upper_p} = {p1:.3f}-{p99:.3f}")
-
-            if p99 != p1:
-                scaled_col = (col - p1) / (p99 - p1)
-                scaled_col = np.clip(scaled_col, 0, 1)
-                scaled_col[~nonzero_mask] = 0
-                scaled_matrix[:, j] = scaled_col
-            else:
-                # fallback: decide 0 or 1 based on nonzero median
-                median_val = np.median(nonzero_vals)
-                threshold_for_high_expression = 1.0
-                if median_val < threshold_for_high_expression:
-                    fill_val = 0
-                else:
-                    fill_val = 1
-                logger.warning(
-                    f"[{var_names[j]}] flat distribution (p{lower_p}=p{upper_p}); filling {fill_val} (median={median_val:.3f})")
-                scaled_matrix[:, j] = fill_val
+        if np.any(nonzero_mask):
+            scaled_col, (lower_p, upper_p, p1, p99) = adaptive_robust_scale_and_track(
+                col, initial_lower=lower, initial_upper=upper, min_range=min_range
+            )
+            scaled_col[~nonzero_mask] = 0
+            scaled_matrix[:, j] = scaled_col
+            logger.debug(f"[{var_names[j]}] adaptive scaling {lower_p}-{upper_p}% → [{p1:.3g}, {p99:.3g}]")
         else:
             logger.warning(f"[{var_names[j]}] No nonzero values; filling 0")
             scaled_matrix[:, j] = 0
 
-    return scaled_matrix, marker_counts
+    return scaled_matrix, cell_total
+
+
 
 def compute_normalized_intensities_for_fov(fov_folder, corrected_sum_df, sensor_markers):
     """
@@ -126,15 +96,9 @@ def compute_normalized_intensities_for_fov(fov_folder, corrected_sum_df, sensor_
     raw_matrix = corrected_sum_df[marker_columns].values
     logger.debug(f"Using marker columns: {marker_columns}")
 
-    # Normalize and scale
-    scaled_matrix, marker_counts = fully_weighted_normalize_and_scale(
+    scaled_matrix, total_intensity = total_intensity_normalize_and_scale(
         matrix=raw_matrix,
-        var_names=marker_columns,
-        sensor_markers=sensor_markers,
-        max_n=4,
-        min_relative_weight=0.01,
-        lower=0.1,
-        upper=99.9
+        var_names=marker_columns
     )
 
     # Construct output DataFrame
