@@ -351,7 +351,7 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
     logger.info("🚀 Running cohort-wide denoising on %d markers across %d FOVs...", len(markers), len(fov_ids))
 
-    denoised_df = run_denoising_pipeline_on_dataframe(full_df, markers)
+    denoised_df, _ = run_denoising_pipeline_on_dataframe(full_df, markers)
     qc_output_pdf = os.path.join(os.path.dirname(protein_csv_paths[0]).replace("protein_features", "QC"),"denoiser_QC.pdf")
 
     save_signal_noise_qc_from_df(
