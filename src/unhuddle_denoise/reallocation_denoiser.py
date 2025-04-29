@@ -84,9 +84,10 @@ def save_signal_noise_qc_from_df(
             intensity_filt = intensity[mask]
 
             ax = axs[i]
-            hb = ax.hexbin(area_filt, intensity_filt, gridsize=gridsize, cmap='Greys', bins='log', mincnt=1)
+            # Just for visualization: scatter plot
+            ax.hexbin(area_filt, intensity_filt, gridsize=gridsize, cmap='Greys', bins='log', mincnt=1)
 
-            # Plot smoothed histogram contour overlay (0.5%, 1%, 10%)
+            # --- Smoothed histogram contour overlay ---
             hist, xedges, yedges = np.histogram2d(area_filt, intensity_filt, bins=[60, 60])
             smoothed = gaussian_filter(hist, sigma=1.2)
             xcenters = (xedges[:-1] + xedges[1:]) / 2
@@ -112,7 +113,7 @@ def save_signal_noise_qc_from_df(
                 logger.warning(f"⚠️ Contour plot failed for {marker}: {e}")
                 ax.text(0.5, 0.5, "Contour Error", ha='center', va='center', transform=ax.transAxes)
 
-            # Infer apex from smoothed histogram (same logic as denoiser)
+            # --- Infer apex ---
             apex_area, apex_intensity = infer_apex_from_smoothed_histogram(
                 area_filt, intensity_filt, bins=60, sigma=1.2, target_percentile=0.5
             )
@@ -120,28 +121,34 @@ def save_signal_noise_qc_from_df(
                 ax.text(0.5, 0.5, "No Apex", ha='center', va='center', transform=ax.transAxes)
                 continue
 
+            # --- Signal fit ---
             signal_slope = (apex_intensity - apex_anchor_y) / (apex_area - apex_anchor_x)
             signal_intercept = apex_anchor_y - signal_slope * apex_anchor_x
             x_signal = np.linspace(apex_anchor_x, x_max, 200)
             y_signal = signal_slope * x_signal + signal_intercept
             ax.plot(x_signal, y_signal, color='orange', lw=2, label="Signal fit")
 
-            counts = hb.get_array()
-            xbins = hb.get_offsets()[:, 0]
-            ybins = hb.get_offsets()[:, 1]
+            # --- Noise fit using numpy bins ---
+            hist, xedges, yedges = np.histogram2d(area_filt, intensity_filt, bins=[gridsize, gridsize])
+            xcenters = (xedges[:-1] + xedges[1:]) / 2
+            ycenters = (yedges[:-1] + yedges[1:]) / 2
+            counts = hist.flatten()
+            xbins = np.repeat(xcenters, gridsize)
+            ybins = np.tile(ycenters, gridsize)
             density_thresh = np.quantile(counts, density_quantile)
+
             noise_mask = (xbins > apex_area) & (counts > density_thresh) & (counts >= min_cells_per_bin)
             if np.any(noise_mask):
-                X_noise = xbins[noise_mask].reshape(-1, 1)
+                X_noise = (xbins[noise_mask] - apex_area).reshape(-1, 1)
                 y_noise = ybins[noise_mask]
-                X_noise_rel = (X_noise - apex_area)
-                model = LinearRegression(fit_intercept=False).fit(X_noise_rel, y_noise)
-                noise_slope = model.coef_[0]
+                noise_model = LinearRegression(fit_intercept=False).fit(X_noise, y_noise)
+                noise_slope = noise_model.coef_[0]
 
                 x_noise = np.linspace(apex_area, x_max, 200)
                 y_noise = noise_slope * (x_noise - apex_area)
                 ax.plot(x_noise, y_noise, color='green', lw=2, label="Noise fit")
 
+            # --- Mark apex ---
             ax.plot(apex_area, apex_intensity, 'o', color='lime', markersize=6, label=f"Apex @ {apex_area:.1f}")
             ax.axvline(apex_area, linestyle='--', color='orange')
             ax.set_title(marker)
@@ -149,6 +156,7 @@ def save_signal_noise_qc_from_df(
             ax.set_ylabel("Intensity")
             ax.legend(fontsize=7)
 
+        # Hide any empty axes
         for j in range(len(markers), len(axs)):
             axs[j].axis("off")
 
@@ -160,45 +168,34 @@ def save_signal_noise_qc_from_df(
 
 
 
+import numpy as np
+import pandas as pd
+from sklearn.linear_model import LinearRegression
+import logging
+from scipy.ndimage import gaussian_filter
+
+
 def run_denoising_pipeline_on_dataframe(
-        df: pd.DataFrame,
-        markers: list[str],
-        area_col: str = "Area",
-        layer_suffix: str = "_ExclusionMembrane_Sum_Intensity",
-        signal_anchor_x: float = 15,
-        signal_anchor_y: float = 0,
-        gridsize: int = 100,
-        density_quantile: float = 0.1,
-        min_cells_per_bin: int = 10,
-        min_area: float = 15,
-        store_metadata: bool = True,
+    df: pd.DataFrame,
+    markers: list[str],
+    area_col: str = "Area",
+    layer_suffix: str = "_ExclusionMembrane_Sum_Intensity",
+    signal_anchor_x: float = 15,
+    signal_anchor_y: float = 0,
+    gridsize: int = 100,
+    density_quantile: float = 0.1,
+    min_cells_per_bin: int = 10,
+    min_area: float = 15,
+    store_metadata: bool = True,
 ) -> pd.DataFrame:
     """
     Adds denoised values for each marker into a DataFrame based on signal/noise cone fitting.
-
     Area values < `min_area` are clipped instead of excluded.
 
-    NEW LOGIC:
-      - Once the computed residual (i.e. intensity minus fitted signal and noise contributions)
-        drops to or below 0, we mask it from further operations (such as area bias regression and robust normalization)
-        and keep it as 0 in the final output.
-
-    Parameters:
-      df: Input DataFrame with area and intensity values.
-      markers: List of marker names.
-      area_col: Column name for the area.
-      layer_suffix: Suffix appended to each marker to obtain the intensity column.
-      signal_anchor_x, signal_anchor_y: Anchors for the signal fitting line.
-      gridsize: Grid size for hexbin used in apex inference.
-      density_quantile: Quantile cutoff for density filtering.
-      min_cells_per_bin: Minimum number of cells per bin to be considered.
-      min_area: Minimum area threshold; values below this are clipped.
-      store_metadata: If True, returns regression and fitting metadata.
-
     Returns:
-      DataFrame with additional columns for denoised intensity values and, optionally, a metadata dictionary.
+        DataFrame with additional columns for denoised intensity values and optionally fitting metadata.
     """
-    # Clip the area values at the minimum threshold.
+    logger = logging.getLogger("unhuddle")
     area = np.clip(df[area_col].values, min_area, None)
     denoised_df = df.copy()
     metadata = {}
@@ -206,70 +203,66 @@ def run_denoising_pipeline_on_dataframe(
     for marker in markers:
         intensity_col = f"{marker}{layer_suffix}"
         if intensity_col not in df.columns:
+            logger.warning(f"⚠️ Marker {marker} missing in dataframe, skipping.")
             continue
 
-        # Convert intensity to float64 for precision.
         intensity = df[intensity_col].values.astype(np.float64)
-
-        # Filter for area values >= min_area for the apex inference.
         area_filt = area[area >= min_area]
         intensity_filt = intensity[area >= min_area]
 
-        # Infer apex from 0.5% percentile of smoothed histogram (faster and more stable than hexbin)
+        # Infer apex
         apex_area, apex_intensity = infer_apex_from_smoothed_histogram(
-            area_filt,
-            intensity_filt,
-            bins=60,
-            sigma=1.2,
-            target_percentile=0.5
+            area_filt, intensity_filt, bins=60, sigma=1.2, target_percentile=0.5
         )
 
         if np.isnan(apex_area) or np.isnan(apex_intensity):
-            continue  # Skip if no apex could be determined
+            logger.warning(f"⚠️ Apex inference failed for marker {marker}, skipping.")
+            continue
 
-        # Fit the signal using the apex and provided anchor point.
+        # --- Signal fit ---
         signal_slope = (apex_intensity - signal_anchor_y) / (apex_area - signal_anchor_x)
         signal_intercept = signal_anchor_y - signal_slope * signal_anchor_x
         signal_fit = signal_slope * area + signal_intercept
 
-        # Infer the noise slope from hexbin bins above the apex.
+        # --- Noise fit (new: pure numpy binning) ---
+        hist, xedges, yedges = np.histogram2d(area_filt, intensity_filt, bins=[gridsize, gridsize])
+        xcenters = (xedges[:-1] + xedges[1:]) / 2
+        ycenters = (yedges[:-1] + yedges[1:]) / 2
+        counts = hist.flatten()
+        xbins = np.repeat(xcenters, gridsize)
+        ybins = np.tile(ycenters, gridsize)
+        density_thresh = np.quantile(counts, density_quantile)
+
         noise_mask = (xbins > apex_area) & (counts > density_thresh) & (counts >= min_cells_per_bin)
         if np.any(noise_mask):
-            X_noise = xbins[noise_mask].reshape(-1, 1)
+            X_noise = (xbins[noise_mask] - apex_area).reshape(-1, 1)
             y_noise = ybins[noise_mask]
-            X_noise_rel = X_noise - apex_area  # relative to the apex area
-            noise_model = LinearRegression(fit_intercept=False).fit(X_noise_rel, y_noise)
+            noise_model = LinearRegression(fit_intercept=False).fit(X_noise, y_noise)
             noise_slope = noise_model.coef_[0]
         else:
-            noise_slope = 0.02  # default fallback value
+            noise_slope = 0.02  # fallback
 
         noise_fit = np.where(area > apex_area, noise_slope * (area - apex_area), 0)
 
-        # Prepare the model input by stacking the signal and noise fits.
+        # --- Full signal + noise model ---
         X = np.stack([signal_fit, noise_fit], axis=1)
         valid_mask = ~np.isnan(X).any(axis=1) & ~np.isnan(intensity)
         X_clean = X[valid_mask]
         y_clean = intensity[valid_mask]
 
-        # Fit the full model (signal + noise) to the intensity.
         full_model = LinearRegression().fit(X_clean, y_clean)
         alpha, beta = full_model.coef_
         intercept_model = full_model.intercept_
 
         signal_contrib = alpha * signal_fit
         noise_contrib = beta * noise_fit
+        model_pred = signal_contrib + noise_contrib + intercept_model
+        residuals = intensity - model_pred
 
-        # Compute residuals after subtracting the model contributions.
-        residuals = intensity - (signal_contrib + noise_contrib + intercept_model)
-
-        # Clip any negative residuals to 0.
+        # --- Residual Clipping and Masking ---
         residuals_clipped = np.clip(residuals, 0, None)
-
-        # ---- New Masking Logic for Residuals ----
-        # Identify positions where the residual is positive.
         positive_mask = residuals_clipped > 0
 
-        # Perform area regression only on the positive residuals.
         if np.any(positive_mask):
             X_area = area[positive_mask].reshape(-1, 1)
             y_res = residuals_clipped[positive_mask]
@@ -277,32 +270,27 @@ def run_denoising_pipeline_on_dataframe(
             gamma = area_model.coef_[0]
             intercept_area = area_model.intercept_
 
-            # Compute the final residual after subtracting area-dependent bias.
-            computed_final_denoised = np.zeros_like(residuals_clipped)
-            computed_final_denoised[positive_mask] = (
-                    residuals_clipped[positive_mask] - (gamma * area[positive_mask] + intercept_area)
-            )
-            computed_final_denoised = np.clip(computed_final_denoised, 0, None)
+            bias_correction = gamma * area + intercept_area
+            corrected_residuals = residuals_clipped - bias_correction
+            corrected_residuals = np.clip(corrected_residuals, 0, None)
         else:
-            computed_final_denoised = np.zeros_like(residuals_clipped)
+            corrected_residuals = np.zeros_like(residuals_clipped)
             gamma = np.nan
             intercept_area = np.nan
 
-        # Apply robust normalization only on the positive (unmasked) values.
-        final_denoised = np.zeros_like(computed_final_denoised)
-        positive_norm_mask = computed_final_denoised > 0
-        if np.any(positive_norm_mask):
-            # Compute the 2nd and 98th percentiles on unmasked values.
-            vmin, vmax = np.percentile(computed_final_denoised[positive_norm_mask], [2, 98])
+        # --- Robust normalization ---
+        final_denoised = np.zeros_like(corrected_residuals)
+        pos_norm_mask = corrected_residuals > 0
+        if np.any(pos_norm_mask):
+            vmin, vmax = np.percentile(corrected_residuals[pos_norm_mask], [2, 98])
             if vmax > vmin:
-                norm_values = np.clip(
-                    (computed_final_denoised[positive_norm_mask] - vmin) / (vmax - vmin), 0, 1
-                )
+                norm_vals = (corrected_residuals[pos_norm_mask] - vmin) / (vmax - vmin)
+                norm_vals = np.clip(norm_vals, 0, 1)
             else:
-                norm_values = np.zeros_like(computed_final_denoised[positive_norm_mask])
-            final_denoised[positive_norm_mask] = norm_values
+                norm_vals = np.zeros_like(corrected_residuals[pos_norm_mask])
+            final_denoised[pos_norm_mask] = norm_vals
 
-        # Save the intermediate (post-clipping) and final denoised intensities.
+        # --- Save outputs ---
         denoised_df[f"{marker}_ExclusionMembrane_Denoised_Intensity"] = residuals_clipped
         denoised_df[f"{marker}_ExclusionMembrane_FinalDenoised_Intensity"] = final_denoised
 
@@ -317,10 +305,11 @@ def run_denoising_pipeline_on_dataframe(
                 "intercept_model": intercept_model,
                 "area_regression_coef": gamma,
                 "area_regression_intercept": intercept_area,
-                "density_quantile_used": density_quantile
+                "density_quantile_used": density_quantile,
             }
 
     return (denoised_df, metadata) if store_metadata else denoised_df
+
 
 
 def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_dir):
