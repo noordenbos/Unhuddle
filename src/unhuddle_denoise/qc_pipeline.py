@@ -367,14 +367,13 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 import math
 
-def qc_plot_normalization_comparison_from_X(
-    adata,
-    raw_layer="sum_unhuddle_denoised",
-    area_key="Area",
-    marker_subset=None,
-    pdf_all_rows_path="qc_all_cells_vs_area.pdf",
-    pdf_storyboard_path="qc_storyboard_per_marker.pdf"
-    ):
+def qc_plot_normalization_comparison_from_X(adata,
+                                            raw_layer="sum_unhuddle_denoised",
+                                            area_key="Area",
+                                            marker_subset=None,
+                                            pdf_all_rows_path="qc_all_cells_vs_area.pdf",
+                                            pdf_storyboard_path="qc_storyboard_per_marker.pdf"):
+
     raw_mat = adata.layers[raw_layer]
     scaled_mat = adata.X  # Now from X
     area = adata.obs[area_key].values
