@@ -25,7 +25,7 @@ def fully_weighted_normalize_and_scale(matrix, var_names, sensor_markers, max_n=
         marker_counts (np.ndarray): Number of sensor markers used per cell
     """
     marker_idx = [i for i, name in enumerate(var_names) if name in sensor_markers]
-    norm_matrix = np.zeros_like(matrix)
+    norm_matrix = np.zeros(matrix.shape, dtype=float)
     marker_counts = np.zeros(matrix.shape[0], dtype=int)
 
     # --- Per-cell normalization using sensor markers ---
@@ -51,23 +51,48 @@ def fully_weighted_normalize_and_scale(matrix, var_names, sensor_markers, max_n=
             if scale > 0:
                 norm_matrix[i, :] = matrix[i, :] / scale
 
-    # --- Per-marker robust scaling ---
+    # --- Per-marker robust scaling with dynamic percentiles and fallback ---
     scaled_matrix = np.zeros_like(norm_matrix)
+
     for j in range(norm_matrix.shape[1]):
         col = norm_matrix[:, j]
         nonzero_mask = col != 0
         nonzero_vals = col[nonzero_mask]
 
         if len(nonzero_vals) > 0:
-            p1, p99 = np.percentile(nonzero_vals, [lower, upper])
+            # compute fraction of nonzero cells
+            fraction_nonzero = len(nonzero_vals) / len(col)
+
+            # decide dynamic percentiles based on sparsity
+            if fraction_nonzero > 0.3:
+                lower_p, upper_p = 0.1, 99.9  # dense marker
+            elif fraction_nonzero > 0.05:
+                lower_p, upper_p = 1, 99  # medium sparse marker
+            else:
+                lower_p, upper_p = 10, 90  # very sparse marker
+
+            # compute percentiles
+            p1, p99 = np.percentile(nonzero_vals, [lower_p, upper_p])
+            logger.debug(f"[{var_names[j]}] {fraction_nonzero:.1%} nonzero → p{lower_p}-{upper_p} = {p1:.3f}-{p99:.3f}")
+
             if p99 != p1:
                 scaled_col = (col - p1) / (p99 - p1)
                 scaled_col = np.clip(scaled_col, 0, 1)
                 scaled_col[~nonzero_mask] = 0
                 scaled_matrix[:, j] = scaled_col
             else:
-                scaled_matrix[:, j] = 0.5  # fallback for flat marker
+                # fallback: decide 0 or 1 based on nonzero median
+                median_val = np.median(nonzero_vals)
+                threshold_for_high_expression = 1.0
+                if median_val < threshold_for_high_expression:
+                    fill_val = 0
+                else:
+                    fill_val = 1
+                logger.warning(
+                    f"[{var_names[j]}] flat distribution (p{lower_p}=p{upper_p}); filling {fill_val} (median={median_val:.3f})")
+                scaled_matrix[:, j] = fill_val
         else:
+            logger.warning(f"[{var_names[j]}] No nonzero values; filling 0")
             scaled_matrix[:, j] = 0
 
     return scaled_matrix, marker_counts

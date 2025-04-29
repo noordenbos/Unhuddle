@@ -5,13 +5,45 @@ import logging
 import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from matplotlib.backends.backend_pdf import PdfPages
+from scipy.ndimage import gaussian_filter
+from matplotlib import _contour
 import warnings
-import json
 warnings.filterwarnings("ignore", message=".*partition.*MaskedArray.*")
 
 logger = logging.getLogger(__name__)
 
 
+
+def infer_apex_from_smoothed_histogram(area_filt, intensity_filt, bins=60, sigma=1.2, target_percentile=0.5):
+    """Infer apex from smoothed 2D histogram at a fixed percentile (e.g., 0.5%)."""
+    hist, xedges, yedges = np.histogram2d(area_filt, intensity_filt, bins=[bins, bins])
+    smoothed = gaussian_filter(hist, sigma=sigma)
+
+    xcenters = (xedges[:-1] + xedges[1:]) / 2
+    ycenters = (yedges[:-1] + yedges[1:]) / 2
+    X, Y = np.meshgrid(xcenters, ycenters, indexing="ij")
+
+    sorted_vals = np.sort(smoothed.ravel())[::-1]
+    cumsum = np.cumsum(sorted_vals)
+    cumsum /= cumsum[-1]
+    idx_level = np.searchsorted(cumsum, (100 - target_percentile) / 100.)
+    level = sorted_vals[min(idx_level, len(sorted_vals) - 1)]
+
+    # Find contours manually
+    contour_set = plt.contour(X, Y, smoothed, levels=[level])
+    plt.close()
+
+    all_segments = contour_set.allsegs[0]
+    if not all_segments:
+        return np.nan, np.nan
+
+    # Merge all segments together
+    all_points = np.vstack(all_segments)
+    apex_idx = np.argmax(all_points[:,1])  # maximize Intensity
+    apex_area = all_points[apex_idx, 0]
+    apex_intensity = all_points[apex_idx, 1]
+
+    return apex_area, apex_intensity
 
 def save_signal_noise_qc_from_df(
     df: pd.DataFrame,
@@ -55,23 +87,39 @@ def save_signal_noise_qc_from_df(
             ax = axs[i]
             hb = ax.hexbin(area_filt, intensity_filt, gridsize=gridsize, cmap='Greys', bins='log', mincnt=1)
 
-            counts = hb.get_array()
-            xbins = hb.get_offsets()[:, 0]
-            ybins = hb.get_offsets()[:, 1]
+            # Plot smoothed histogram contour overlay (0.5%, 1%, 10%)
+            hist, xedges, yedges = np.histogram2d(area_filt, intensity_filt, bins=[60, 60])
+            smoothed = gaussian_filter(hist, sigma=1.2)
+            xcenters = (xedges[:-1] + xedges[1:]) / 2
+            ycenters = (yedges[:-1] + yedges[1:]) / 2
+            X, Y = np.meshgrid(xcenters, ycenters, indexing="ij")
 
-            density_thresh = np.quantile(counts, density_quantile)
-            keep_mask = (counts > density_thresh) & (counts >= min_cells_per_bin)
+            sorted_vals = np.sort(smoothed.ravel())[::-1]
+            cumsum = np.cumsum(sorted_vals)
+            cumsum /= cumsum[-1]
 
-            if not np.any(keep_mask):
-                logger.warning(f"⚠️ No valid apex region for marker '{marker}', skipping fit.")
-                ax.text(0.5, 0.5, "No valid peak", ha='center', va='center', transform=ax.transAxes, color='red')
+            percentiles = [10, 1, 0.5]
+            levels = []
+            for p in percentiles:
+                idx = np.searchsorted(cumsum, (100 - p) / 100.)
+                levels.append(sorted_vals[min(idx, len(sorted_vals) - 1)])
+            levels, percentiles = zip(*sorted(zip(levels, percentiles)))  # ensure increasing
+
+            try:
+                contour = ax.contour(X, Y, smoothed, levels=levels, colors=['red', 'blue', 'green'], linewidths=1.2)
+                fmt = {l: f"{p:.1f}%" for l, p in zip(contour.levels, percentiles)}
+                ax.clabel(contour, inline=True, fontsize=7, fmt=fmt)
+            except Exception as e:
+                logger.warning(f"⚠️ Contour plot failed for {marker}: {e}")
+                ax.text(0.5, 0.5, "Contour Error", ha='center', va='center', transform=ax.transAxes)
+
+            # Infer apex from smoothed histogram (same logic as denoiser)
+            apex_area, apex_intensity = infer_apex_from_smoothed_histogram(
+                area_filt, intensity_filt, bins=60, sigma=1.2, target_percentile=0.5
+            )
+            if np.isnan(apex_area):
+                ax.text(0.5, 0.5, "No Apex", ha='center', va='center', transform=ax.transAxes)
                 continue
-
-            top_x = xbins[keep_mask]
-            top_y = ybins[keep_mask]
-            peak_idx = np.argmax(top_y)
-            apex_area = top_x[peak_idx]
-            apex_intensity = top_y[peak_idx]
 
             signal_slope = (apex_intensity - apex_anchor_y) / (apex_area - apex_anchor_x)
             signal_intercept = apex_anchor_y - signal_slope * apex_anchor_x
@@ -79,6 +127,10 @@ def save_signal_noise_qc_from_df(
             y_signal = signal_slope * x_signal + signal_intercept
             ax.plot(x_signal, y_signal, color='orange', lw=2, label="Signal fit")
 
+            counts = hb.get_array()
+            xbins = hb.get_offsets()[:, 0]
+            ybins = hb.get_offsets()[:, 1]
+            density_thresh = np.quantile(counts, density_quantile)
             noise_mask = (xbins > apex_area) & (counts > density_thresh) & (counts >= min_cells_per_bin)
             if np.any(noise_mask):
                 X_noise = xbins[noise_mask].reshape(-1, 1)
@@ -91,12 +143,12 @@ def save_signal_noise_qc_from_df(
                 y_noise = noise_slope * (x_noise - apex_area)
                 ax.plot(x_noise, y_noise, color='green', lw=2, label="Noise fit")
 
-            ax.plot(apex_area, apex_intensity, 'ro', label=f"Apex @ {apex_area:.1f}")
+            ax.plot(apex_area, apex_intensity, 'o', color='lime', markersize=6, label=f"Apex @ {apex_area:.1f}")
             ax.axvline(apex_area, linestyle='--', color='orange')
             ax.set_title(marker)
             ax.set_xlabel("Area")
             ax.set_ylabel("Intensity")
-            ax.legend(fontsize=8)
+            ax.legend(fontsize=7)
 
         for j in range(len(markers), len(axs)):
             axs[j].axis("off")
@@ -106,6 +158,7 @@ def save_signal_noise_qc_from_df(
         plt.close(fig)
 
     logger.info("✅ QC PDF saved to: %s", output_pdf)
+
 
 
 def run_denoising_pipeline_on_dataframe(
@@ -119,6 +172,7 @@ def run_denoising_pipeline_on_dataframe(
         density_quantile: float = 0.1,
         min_cells_per_bin: int = 10,
         min_area: float = 15,
+        store_metadata: bool = True,
 ) -> pd.DataFrame:
     """
     Adds denoised values for each marker into a DataFrame based on signal/noise cone fitting.
@@ -162,23 +216,17 @@ def run_denoising_pipeline_on_dataframe(
         area_filt = area[area >= min_area]
         intensity_filt = intensity[area >= min_area]
 
-        # Infer apex parameters via a hexbin plot (using log-binning of counts).
-        hb = plt.hexbin(area_filt, intensity_filt, gridsize=gridsize, bins='log', cmap='Greys')
-        plt.close()
-        counts = hb.get_array()
-        xbins = hb.get_offsets()[:, 0]
-        ybins = hb.get_offsets()[:, 1]
+        # Infer apex from 0.5% percentile of smoothed histogram (faster and more stable than hexbin)
+        apex_area, apex_intensity = infer_apex_from_smoothed_histogram(
+            area_filt,
+            intensity_filt,
+            bins=60,
+            sigma=1.2,
+            target_percentile=0.5
+        )
 
-        density_thresh = np.quantile(counts, density_quantile)
-        keep_mask = (counts > density_thresh) & (counts >= min_cells_per_bin)
-        if not np.any(keep_mask):
-            continue
-
-        top_x = xbins[keep_mask]
-        top_y = ybins[keep_mask]
-        peak_idx = np.argmax(top_y)
-        apex_area = top_x[peak_idx]
-        apex_intensity = top_y[peak_idx]
+        if np.isnan(apex_area) or np.isnan(apex_intensity):
+            continue  # Skip if no apex could be determined
 
         # Fit the signal using the apex and provided anchor point.
         signal_slope = (apex_intensity - signal_anchor_y) / (apex_area - signal_anchor_x)
@@ -259,23 +307,21 @@ def run_denoising_pipeline_on_dataframe(
         denoised_df[f"{marker}_ExclusionMembrane_Denoised_Intensity"] = residuals_clipped
         denoised_df[f"{marker}_ExclusionMembrane_FinalDenoised_Intensity"] = final_denoised
 
+        if store_metadata:
+            metadata[marker] = {
+                "apex_area": apex_area,
+                "apex_intensity": apex_intensity,
+                "signal_slope": signal_slope,
+                "noise_slope": noise_slope,
+                "alpha": alpha,
+                "beta": beta,
+                "intercept_model": intercept_model,
+                "area_regression_coef": gamma,
+                "area_regression_intercept": intercept_area,
+                "density_quantile_used": density_quantile
+            }
 
-        metadata[marker] = {
-            "apex_area": apex_area,
-            "apex_intensity": apex_intensity,
-            "signal_slope": signal_slope,
-            "noise_slope": noise_slope,
-            "alpha": alpha,
-            "beta": beta,
-            "intercept_model": intercept_model,
-            "area_regression_coef": gamma,
-            "area_regression_intercept": intercept_area
-        }
-
-    return {
-        "denoised_df": denoised_df,
-        "metadata": metadata
-    }
+    return (denoised_df, metadata) if store_metadata else denoised_df
 
 
 def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_dir):
@@ -288,7 +334,6 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
     all_fovs_data = []
     fov_ids = []
-    metadata_by_fov = {}
 
     for morph_path, protein_path in zip(morph_csv_paths, protein_csv_paths):
         try:
@@ -302,15 +347,7 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
             joint_df = morph_df[["Area"]].join(protein_df, how="inner")
             joint_df["fov"] = fov_name
 
-            # Denoise per FOV
-            result = run_denoising_pipeline_on_dataframe(joint_df, markers=[
-                col.replace("_ExclusionMembrane_Sum_Intensity", "")
-                for col in protein_df.columns if col.endswith("_ExclusionMembrane_Sum_Intensity")
-            ])
-            denoised_df = result["denoised_df"]
-            metadata_by_fov[fov_name] = result["metadata"]
-
-            all_fovs_data.append(denoised_df)
+            all_fovs_data.append(joint_df)
             fov_ids.append(fov_name)
 
         except Exception as e:
@@ -321,6 +358,12 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
     full_df = pd.concat(all_fovs_data, axis=0, ignore_index=True)
 
+    intensity_cols = [col for col in full_df.columns if col.endswith("_ExclusionMembrane_Sum_Intensity")]
+    markers = [col.replace("_ExclusionMembrane_Sum_Intensity", "") for col in intensity_cols]
+
+    logger.info("🚀 Running cohort-wide denoising on %d markers across %d FOVs...", len(markers), len(fov_ids))
+
+    denoised_df = run_denoising_pipeline_on_dataframe(full_df, markers)
     qc_output_pdf = os.path.join(
         os.path.dirname(protein_csv_paths[0]).replace("protein_features", "QC"),
         "denoiser_QC.pdf"
@@ -328,14 +371,13 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
     save_signal_noise_qc_from_df(
         df=full_df,
-        markers=[col.replace("_ExclusionMembrane_Sum_Intensity", "")
-                 for col in full_df.columns if col.endswith("_ExclusionMembrane_Sum_Intensity")],
+        markers=markers,
         output_pdf=qc_output_pdf,
         density_quantile=0.1,
         min_cells_per_bin=20
     )
 
-    for fov_name, group in full_df.groupby("fov"):
+    for fov_name, group in denoised_df.groupby("fov"):
         denoised_cols = [
             col for col in group.columns
             if col.endswith("_ExclusionMembrane_Denoised_Intensity") or col.endswith("_ExclusionMembrane_FinalDenoised_Intensity")
@@ -349,6 +391,8 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
         try:
             protein_df = pd.read_csv(protein_csv_path)
+
+            # Drop old denoised columns if they exist
             cols_to_drop = [col for col in protein_df.columns if col in denoised_block.columns]
             if cols_to_drop:
                 logger.debug(f"🧹 Overwriting existing denoised columns for FOV '{fov_name}': {cols_to_drop}")
@@ -356,13 +400,8 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
             updated_df = pd.concat([protein_df.reset_index(drop=True), denoised_block], axis=1)
             updated_df.to_csv(protein_csv_path, index=False)
+
             logger.info(f"📝 Denoised values updated in protein CSV for FOV: {fov_name}")
 
         except Exception as e:
             logger.error(f"❌ Failed to update {protein_csv_path}: {e}")
-
-    # Save metadata to single JSON
-    metadata_path = os.path.join(protein_features_dir.replace("protein_features", "QC"), "cohort_denoising_metadata.json")
-    with open(metadata_path, "w") as f:
-        json.dump(metadata_by_fov, f, indent=2)
-    logger.info(f"🧠 Denoising metadata saved to: {metadata_path}")
