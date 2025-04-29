@@ -385,31 +385,31 @@ def qc_plot_normalization_comparison_from_X(adata,
     area_safe = np.where(area == 0, np.nan, area)
 
     with PdfPages(pdf_all_rows_path) as pdf:
-        for j in marker_idx:
-            name = adata.var_names[j]
-            raw = raw_mat[:, j]
-            raw_area_norm = raw / area_safe
-            scaled = scaled_mat[:, j]
+        # Stack all selected marker columns together
+        raw_all = raw_mat[:, marker_idx].flatten()
+        raw_area_norm_all = (raw_mat[:, marker_idx] / area_safe[:, None]).flatten()
+        scaled_all = scaled_mat[:, marker_idx].flatten()
+        area_all = np.repeat(area, len(marker_idx))
 
-            fig, axs = plt.subplots(1, 3, figsize=(12, 4), sharex=False)
+        fig, axs = plt.subplots(1, 3, figsize=(12, 4), sharex=False)
 
-            axs[0].scatter(area, raw, s=2, alpha=0.3)
-            axs[0].set_title(f"{name} - Raw")
-            axs[0].set_xlabel("Area")
-            axs[0].set_ylabel("Intensity")
+        axs[0].scatter(area_all, raw_all, s=1, alpha=0.2)
+        axs[0].set_title("All markers - Raw")
+        axs[0].set_xlabel("Area")
+        axs[0].set_ylabel("Intensity")
 
-            axs[1].scatter(area, raw_area_norm, s=2, alpha=0.3)
-            axs[1].set_title(f"{name} - Raw / Area")
-            axs[1].set_xlabel("Area")
+        axs[1].scatter(area_all, raw_area_norm_all, s=1, alpha=0.2)
+        axs[1].set_title("All markers - Raw / Area")
+        axs[1].set_xlabel("Area")
 
-            axs[2].scatter(area, scaled, s=2, alpha=0.3)
-            axs[2].set_title(f"{name} - Robust Scaled")
-            axs[2].set_xlabel("Area")
+        axs[2].scatter(area_all, scaled_all, s=1, alpha=0.2)
+        axs[2].set_title("All markers - Robust Scaled")
+        axs[2].set_xlabel("Area")
 
-            fig.suptitle(f"{name} normalization comparison")
-            plt.tight_layout()
-            pdf.savefig(fig)
-            plt.close()
+        fig.suptitle("All markers vs Area (combined)")
+        plt.tight_layout()
+        pdf.savefig(fig)
+        plt.close()
 
     with PdfPages(pdf_storyboard_path) as pdf:
         n = len(marker_idx)
@@ -501,9 +501,10 @@ def run_qc_from_memory(args, adata):
     qc_plot_normalization_comparison_from_X(
         adata=adata,
         raw_layer="sum_unhuddle_denoised",
-        marker_subset=None,  # None for all, accept list as well
-        pdf_all_rows_path= os.path.join(qc_dir, "normalisation", "qc_all_rows.pdf")
-        pdf_storyboard_path= os.path.join(qc_dir, "normalisation", "qc_marker_storyboard.pdf")
+        marker_subset=None,
+        pdf_all_rows_path=os.path.join(qc_dir, "normalisation", "qc_all_rows.pdf"),
+        pdf_storyboard_path=os.path.join(qc_dir, "normalisation", "qc_marker_storyboard.pdf")
+    )
 
     # ── 7. DR Plot ────────────────────────────────────────────────────────────────
     logger.info('📈 Filtering results in Dimension Reduction plot')

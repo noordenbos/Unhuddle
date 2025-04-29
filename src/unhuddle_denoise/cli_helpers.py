@@ -253,6 +253,7 @@ def setup_output_directories(output_base: str, args) -> dict:
         "unhuddle_sum": os.path.join(output_base, "unhuddle_sum"),
         "unhuddle_norm": os.path.join(output_base, "unhuddle_normalized"),
         "QC": os.path.join(output_base, "QC"),
+        "QC_norm": os.path.join(output_base, "QC", "normalisation"),
     }
 
     # Conditional folders
