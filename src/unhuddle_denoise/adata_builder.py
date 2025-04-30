@@ -173,17 +173,6 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
         if os.path.exists(mask_path):
             adata.uns["spatial"][fov] = {"segmentation": imread(mask_path)}
 
-    if "dr" in dirs and fovs:
-        fitsne_path = os.path.join(dirs["dr"], f"{fovs[0]}.csv")
-        if os.path.exists(fitsne_path):
-            coords = pd.read_csv(fitsne_path).values
-            adata.obsm["X_fitsne"] = coords
-            logger.info(f"✅ Loaded DR coordinates for FOV: {fovs[0]}")
-        else:
-            logger.warning(f"⚠️ DR coordinate file not found: {fitsne_path}")
-    else:
-        logger.info("ℹ️ Skipping DR coordinate load — 'dr' key not in dirs or no FOVs present.")
-
     adata.write_h5ad(adata_output_path)
     print(f"AnnData saved to: {adata_output_path}\n\n")
     return adata

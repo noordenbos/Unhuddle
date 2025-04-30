@@ -58,7 +58,7 @@ def save_signal_noise_qc_from_df(
     cols=3,
     x_max=300
 ):
-    logger = logging.getLogger("unhuddle")
+    logger = logging.getLogger(__name__)
     logger.info("📊 Starting signal/noise QC plotting for %d markers...", len(markers))
 
     n = len(markers)
@@ -195,7 +195,7 @@ def run_denoising_pipeline_on_dataframe(
     Returns:
         DataFrame with additional columns for denoised intensity values and optionally fitting metadata.
     """
-    logger = logging.getLogger("unhuddle")
+    logger = logging.getLogger(__name__)
     area = np.clip(df[area_col].values, min_area, None)
     denoised_df = df.copy()
     metadata = {}
@@ -312,12 +312,18 @@ def run_denoising_pipeline_on_dataframe(
 
 
 
-def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_dir):
-    logger = logging.getLogger("unhuddle")
+def compute_denoised_reallocation_factors(protein_csv_paths, dirs):
+    logger = logging.getLogger(__name__)
 
+    morph_dir = dirs["morph"]
+    protein_dir = dirs["protein"]
+    qc_out_dir = dirs.get("QC_metadata_denoised", os.path.join(dirs["QC"], "metadata_denoise"))
+    os.makedirs(qc_out_dir, exist_ok=True)
+
+    # Derive corresponding morphology paths
     morph_csv_paths = [
-        path.replace("protein_features", "morphology_features")
-        for path in protein_csv_paths
+        os.path.join(morph_dir, os.path.basename(p))
+        for p in protein_csv_paths
     ]
 
     all_fovs_data = []
@@ -351,9 +357,9 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
     logger.info("🚀 Running cohort-wide denoising on %d markers across %d FOVs...", len(markers), len(fov_ids))
 
-    denoised_df, _ = run_denoising_pipeline_on_dataframe(full_df, markers)
-    qc_output_pdf = os.path.join(os.path.dirname(protein_csv_paths[0]).replace("protein_features", "QC"),"denoiser_QC.pdf")
+    denoised_df, metadata = run_denoising_pipeline_on_dataframe(full_df, markers)
 
+    qc_output_pdf = os.path.join(qc_out_dir, "denoiser_QC.pdf")
     save_signal_noise_qc_from_df(
         df=full_df,
         markers=markers,
@@ -361,23 +367,34 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
         density_quantile=0.1,
         min_cells_per_bin=20
     )
+    # Save denoiser metadata
+    metadata_path = os.path.join(qc_out_dir, "denoiser_metadata.csv")
+    try:
+        if isinstance(metadata, pd.DataFrame):
+            metadata.to_csv(metadata_path, index=False)
+        elif isinstance(metadata, dict):
+            pd.DataFrame.from_dict(metadata).to_csv(metadata_path, index=False)
+        else:
+            raise TypeError("Unsupported metadata format; expected DataFrame or dict.")
+        logger.info(f"🧾 Saved denoiser metadata: {metadata_path}")
+    except Exception as e:
+        logger.error(f"❌ Failed to save denoiser metadata: {e}")
 
     for fov_name, group in denoised_df.groupby("fov"):
         denoised_cols = [
             col for col in group.columns
-            if col.endswith("_ExclusionMembrane_Denoised_Intensity") or col.endswith("_ExclusionMembrane_FinalDenoised_Intensity")
+            if col.endswith("_ExclusionMembrane_Denoised_Intensity") or
+               col.endswith("_ExclusionMembrane_FinalDenoised_Intensity")
         ]
         denoised_block = group[denoised_cols].reset_index(drop=True)
 
-        protein_csv_path = os.path.join(protein_features_dir, f"{fov_name}.csv")
+        protein_csv_path = os.path.join(protein_dir, f"{fov_name}.csv")
         if not os.path.exists(protein_csv_path):
             logger.warning(f"⚠️ Protein CSV not found for FOV '{fov_name}', skipping update.")
             continue
 
         try:
             protein_df = pd.read_csv(protein_csv_path)
-
-            # Drop old denoised columns if they exist
             cols_to_drop = [col for col in protein_df.columns if col in denoised_block.columns]
             if cols_to_drop:
                 logger.debug(f"🧹 Overwriting existing denoised columns for FOV '{fov_name}': {cols_to_drop}")
@@ -390,3 +407,4 @@ def compute_denoised_reallocation_factors(protein_csv_paths, protein_features_di
 
         except Exception as e:
             logger.error(f"❌ Failed to update {protein_csv_path}: {e}")
+

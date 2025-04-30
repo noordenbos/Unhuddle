@@ -287,8 +287,7 @@ def generate_dr_plot(adata, dirs):
         title_fontsize='small'
     )
 
-    out_path = os.path.join(dirs["QC"], 'dr_qc.png')
-    os.makedirs(dirs["QC"], exist_ok=True)
+    out_path = os.path.join(dirs["QC_filtering"], 'dr_qc.png')
     plt.savefig(out_path, dpi=200, bbox_inches='tight')
     plt.close()
     logger.info(f"🖼️ DR QC plot saved to: {out_path}")

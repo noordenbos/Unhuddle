@@ -271,14 +271,13 @@ def setup_output_directories(output_base: str, args) -> dict:
         "unhuddle_sum": os.path.join(output_base, "processed_data", "unhuddle_sum"),
         "unhuddle_norm": os.path.join(output_base, "processed_data", "unhuddle_normalized"),
         "QC": os.path.join(output_base, "QC"),
-        "QC_norm": os.path.join(output_base, "QC", "normalisation"),
         "QC_normstats": os.path.join(output_base, "QC", "normalisation_stats"),
     }
     # Conditional folders
     if getattr(args, "create_adata", False):
         dirs["adata"] = os.path.join(output_base, "adata_objects")
 
-    if getattr(args, "fitsne", False) or getattr(args, "add_dimensionreduction_coords", None):
+    if getattr(args, "fitsne", False):
         dirs["dr"] = os.path.join(output_base, "dr_coords")
 
     if getattr(args, "use_denoised", False):
@@ -543,7 +542,7 @@ def fitsne(args):
 def run_qc_pipeline(args, adata, dirs):
     def log_pre_qc_adata_summary(adata, name="Pre-QC"):
         import numpy as np
-        logger = logging.getLogger("unhuddle")
+        logger = logging.getLogger(__name__)
         logger.info(f"🧬 Inspecting AnnData ({name})...")
 
         logger.info(f" - Total cells: {adata.n_obs}")
