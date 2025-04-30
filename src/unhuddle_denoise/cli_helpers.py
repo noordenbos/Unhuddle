@@ -171,6 +171,12 @@ def parse_arguments() -> argparse.Namespace:
                         help=argparse.SUPPRESS)
     parser.add_argument("--qc_stride", type=int, default=10,
                         help=argparse.SUPPRESS)
+    parser.add_argument(
+        "-y", "--yes",
+        action="store_true",
+        help=argparse.SUPPRESS
+    )
+
 
     return parser.parse_args()
 
@@ -227,35 +233,47 @@ def list_available_markers(args: argparse.Namespace) -> None:
     print("list:", " ".join(marker_names))
     print("\n✅ Rerun without --list_available_markers to start the pipeline\n")
 
+def get_available_protein_markers(
+    base_path: str, nuclear_markers: list[str]
+) -> list[str]:
+    """
+    Return list of protein markers by scanning .ome.tiff files in the first FOV,
+    excluding nuclear markers.
+    """
+    fov_folders = [
+        os.path.join(base_path, folder)
+        for folder in os.listdir(base_path)
+        if os.path.isdir(os.path.join(base_path, folder))
+    ]
+    if not fov_folders:
+        raise FileNotFoundError("No FOV folders found in base path.")
+
+    first_fov = fov_folders[0]
+    ome_files = glob.glob(os.path.join(first_fov, "*.ome.tiff"))
+    if not ome_files:
+        raise FileNotFoundError(f"No .ome.tiff files found in {first_fov}")
+
+    all_markers = [os.path.basename(f).replace(".ome.tiff", "") for f in ome_files]
+    protein_markers = sorted(m for m in all_markers if m not in nuclear_markers)
+
+    return protein_markers
 
 def setup_output_directories(output_base: str, args) -> dict:
     """
     Conditionally create and return the necessary output directories based on CLI flags.
-
-    Parameters:
-    -----------
-    output_base : str
-        Base path to create output subdirectories.
-    args : Namespace
-        Parsed CLI arguments to decide which folders are required.
-
-    Returns:
-    --------
-    dict
-        Mapping of folder roles to their full output paths.
     """
-
     dirs = {
-        "morph": os.path.join(output_base, "morphology_features"),
-        "protein": os.path.join(output_base, "protein_features"),
-        "original_sum": os.path.join(output_base, "original_sum"),
-        "original_norm": os.path.join(output_base, "original_normalized"),
-        "unhuddle_sum": os.path.join(output_base, "unhuddle_sum"),
-        "unhuddle_norm": os.path.join(output_base, "unhuddle_normalized"),
+        "morph": os.path.join(output_base, "features", "morphology_features"),
+        "protein": os.path.join(output_base, "features", "protein_features"),
+        "original_tables": os.path.join(output_base, "processed_data", "original_tables"),
+        "original_sum": os.path.join(output_base, "processed_data", "original_tables", "original_sum"),
+        "original_norm": os.path.join(output_base, "processed_data", "original_tables", "original_normalized"),
+        "unhuddle_sum": os.path.join(output_base, "processed_data", "unhuddle_sum"),
+        "unhuddle_norm": os.path.join(output_base, "processed_data", "unhuddle_normalized"),
         "QC": os.path.join(output_base, "QC"),
         "QC_norm": os.path.join(output_base, "QC", "normalisation"),
+        "QC_normstats": os.path.join(output_base, "QC", "normalisation_stats"),
     }
-
     # Conditional folders
     if getattr(args, "create_adata", False):
         dirs["adata"] = os.path.join(output_base, "adata_objects")
@@ -264,15 +282,16 @@ def setup_output_directories(output_base: str, args) -> dict:
         dirs["dr"] = os.path.join(output_base, "dr_coords")
 
     if getattr(args, "use_denoised", False):
-        dirs["unhuddle_denoised_sum"] = os.path.join(output_base, "unhuddle_denoised_sum")
-        dirs["unhuddle_denoised_norm"] = os.path.join(output_base, "unhuddle_denoised_normalized")
-        dirs["metadata_denoised"] = os.path.join(output_base, "metadata_denoise")
+        dirs["unhuddle_denoised_sum"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum")
+        dirs["unhuddle_denoised_norm"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized")
+        dirs["QC_metadata_denoised"] = os.path.join(output_base, "QC", "metadata_denoise")
 
     # Actually create the folders
     for path in dirs.values():
         os.makedirs(path, exist_ok=True)
 
     return dirs
+
 
 
 
@@ -374,8 +393,7 @@ def build_feature_args(fov: str, dirs: dict, args: argparse.Namespace):
     """
     return (
         fov,
-        dirs["morph"],
-        dirs["protein"],
+        dirs,
         args.create_nuclear_mask,
         args.create_deepcell_mask,
         args.geckodriver_path,
@@ -386,8 +404,7 @@ def build_feature_args(fov: str, dirs: dict, args: argparse.Namespace):
         args.log_level,
         args.deepcell_resolution,
         args.nuclear_markers_overlay,
-        args.membrane_markers_overlay
-
+        args.membrane_markers_overlay,
     )
 
 
@@ -401,23 +418,18 @@ def build_reallocation_args(fov: str, dirs: dict, args: argparse.Namespace):
     return (
         fov,
         protein_df,
-        dirs["original_sum"],
-        dirs["original_norm"],
-        dirs["unhuddle_sum"],
-        dirs["unhuddle_norm"],
-        dirs.get("unhuddle_denoised_sum", None),
-        dirs.get("unhuddle_denoised_norm", None),
+        dirs,
         args.normalisation_markers,
         args.use_denoised,
-        args.log_level
+        args.log_level,
     )
 
 
-def maybe_build_adata(args):
+def maybe_build_adata(args, dirs):
     from unhuddle_denoise.adata_builder import build_adata_from_outputs
     try:
         adata = build_adata_from_outputs(
-            output_base_path=args.output_base_path,
+            dirs=dirs,
             working_path=args.base_path,
             output_adata_name="adata1.h5ad",
             max_workers=1
@@ -444,9 +456,9 @@ def infer_dr_method_from_colnames(coord_cols):
     return "ext_dr"  # fallback
 
 
-def create_adata(args: argparse.Namespace) -> None:
+def create_adata(args: argparse.Namespace, dirs) -> None:
     logging.info("\n📦 Creating unified AnnData object...")
-    adata = maybe_build_adata(args)
+    adata = maybe_build_adata(args, dirs)
 
     if adata is None:
         print("❌ AnnData creation failed. Skipping QC.")
@@ -503,7 +515,7 @@ def create_adata(args: argparse.Namespace) -> None:
         adata.uns["dr_source"] = f"external::{dr_method}"
 
         logging.info(f"✅ Stored external DR coordinates in adata.obsm['{obsm_key}']")
-    run_qc_pipeline(args, adata)
+    run_qc_pipeline(args, adata, dirs)
     return adata
 
 
@@ -528,7 +540,7 @@ def fitsne(args):
     print(f"✅ FIt-SNE coordinates saved to {fitsne_dir}")
 
 
-def run_qc_pipeline(args, adata):
+def run_qc_pipeline(args, adata, dirs):
     def log_pre_qc_adata_summary(adata, name="Pre-QC"):
         import numpy as np
         logger = logging.getLogger("unhuddle")
@@ -560,5 +572,75 @@ def run_qc_pipeline(args, adata):
     log_pre_qc_adata_summary(adata, name="before QC")
     from unhuddle_denoise.qc_pipeline import run_qc_from_memory
     print("🚀 Running QC filtering pipeline ...")
-    run_qc_from_memory(args, adata)  # Correct in-memory call
+    run_qc_from_memory(args, adata, dirs)  # Correct in-memory call
 
+
+
+def run_cohort_normalization(
+    fov_folders: list[str],
+    sum_dirs: dict[str,str],
+    dirs: dict[str,str],
+    markers: list[str],
+    sensor_markers: list[str],
+    lower_pct: float = 1.0,
+    upper_pct: float = 99.0,
+    min_range: float = 1e-3
+):
+    """
+    Perform cohort-level normalization for ORIGINAL, CORRECTED(unhuddle), and optional DENOISED sums(unhuddle+denoiser).
+    sum_dirs: {
+      'original': original_sum_dir,
+      'corrected': corrected_sum_dir,
+      'denoised': denoised_sum_dir or ''
+    }
+    Writes out per-FOV cohort-normalized CSVs and stats in cohort_out_dir.
+    """
+    from unhuddle_denoise.normalization import (
+        _per_cell_normalize,
+        compute_cohort_marker_stats,
+        apply_cohort_scaling
+    )
+    logger = logging.getLogger(__name__)
+    for key in ['original', 'corrected', 'denoised']:
+        src_dir = sum_dirs.get(key)
+        if not src_dir or not os.path.isdir(src_dir):
+            continue  # skip missing branch
+        # collect per-FOV label + matrix
+        fov_paths = sorted(glob.glob(os.path.join(src_dir, '*.csv')))
+        mats = []
+        labels = []
+        fovs = []
+        for fn in fov_paths:
+            fov = os.path.basename(fn).replace('.csv','')
+            df = pd.read_csv(fn)
+            labels.append(df['Label'].values)
+            mats.append(df[markers].values)
+            fovs.append(fov)
+        # per-cell normalize each
+        norms = [ _per_cell_normalize(m, markers, sensor_markers)[0] for m in mats ]
+        # compute cohort p1/p99
+        stats = compute_cohort_marker_stats(norms, markers,
+                                           lower_pct=lower_pct,
+                                           upper_pct=upper_pct,
+                                           min_range=min_range)
+        # save cohort stats
+        stats.to_csv(os.path.join(dirs["QC_normstats"], f"{key}_cohort_stats.csv"), index=False)
+        # apply cohort scaling and save
+        # apply cohort scaling and save
+        for fov, norm_mat, lbl in zip(fovs, norms, labels):
+            scaled = apply_cohort_scaling(norm_mat, markers, stats)
+            out = pd.DataFrame(scaled, columns=markers)
+            out.insert(0, 'Label', lbl)
+
+            if key == 'original':
+                out_dir = dirs["original_norm"]
+            elif key == 'corrected':
+                out_dir = dirs["unhuddle_norm"]
+            elif key == 'denoised':
+                out_dir = dirs["unhuddle_denoised_norm"]
+            else:
+                raise ValueError(f"Unknown normalization branch: {key}")
+
+            out_fn = os.path.join(out_dir, f"{fov}.csv")
+            logger.info(f"✅ Saved cohort-normalized matrix: {out_fn}")
+            out.to_csv(out_fn, index=False)

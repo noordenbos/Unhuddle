@@ -308,7 +308,7 @@ def run_denoising_pipeline_on_dataframe(
                 "density_quantile_used": density_quantile,
             }
 
-    return (denoised_df, metadata) if store_metadata else denoised_df
+    return (denoised_df, metadata)
 
 
 

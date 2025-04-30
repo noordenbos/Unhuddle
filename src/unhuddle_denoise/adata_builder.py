@@ -13,19 +13,31 @@ import logging
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", message=".*converted to numpy array with dtype.*")
 
-def build_adata_from_outputs(output_base_path, working_path=None, output_adata_name="adata1.h5ad", max_workers=16):
+import os
+import glob
+import numpy as np
+import pandas as pd
+import warnings
+from collections import defaultdict
+from tqdm import tqdm
+from anndata import AnnData
+from tifffile import imread
+import logging
+
+logger = logging.getLogger(__name__)
+warnings.filterwarnings("ignore", message=".*converted to numpy array with dtype.*")
+
+
+def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: str = "adata1.h5ad", max_workers: int = 16):
     """Reconciles processed FOV outputs into a single AnnData object."""
-    if working_path is None:
-        raise ValueError("🛑 'working_path' must be explicitly provided — segmentation masks are required.")
 
-    if not os.path.isdir(output_base_path):
-        raise FileNotFoundError(f"🛑 Output directory not found: {output_base_path}")
-
+    if not os.path.isdir(dirs["adata"]):
+        raise FileNotFoundError(f"🛑 Output directory not found: {dirs['adata']}")
     if not os.path.isdir(working_path):
         raise FileNotFoundError(f"🛑 Working path (input FOVs) not found: {working_path}")
 
-    adata_output_path = os.path.join(output_base_path, "adata_objects", output_adata_name)
-    qc_dir = os.path.join(output_base_path, "QC")
+    adata_output_path = os.path.join(dirs["adata"], output_adata_name)
+    qc_dir = dirs["QC"]
 
     os.makedirs(os.path.dirname(adata_output_path), exist_ok=True)
     os.makedirs(qc_dir, exist_ok=True)
@@ -34,7 +46,7 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
     logger.info(f"Creating QC figures in: {qc_dir}")
 
     def get_fov_list():
-        files = glob.glob(f"{output_base_path}/unhuddle_normalized/*.csv")
+        files = glob.glob(os.path.join(dirs["unhuddle_norm"], "*.csv"))
         return [os.path.splitext(os.path.basename(f))[0] for f in files]
 
     def load_df(path, fov):
@@ -58,20 +70,21 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
         "ExclMem_Sum": []
     }
     all_obsm_spatial = []
+    denoised_fovs = []
+    fov_count = 0
 
     for fov in tqdm(fovs, desc="Constructing AnnData"):
-        fov_count = 0
-        denoised_fovs = []
         layer_counts = defaultdict(int)
         paths = {
-            "intensity": f"{output_base_path}/unhuddle_normalized/{fov}.csv",
-            "sum": f"{output_base_path}/unhuddle_sum/{fov}.csv",
-            "orig_sum": f"{output_base_path}/original_sum/{fov}.csv",
-            "morph": f"{output_base_path}/morphology_features/{fov}.csv",
-            "denoised_intensity": f"{output_base_path}/unhuddle_denoised_normalized/{fov}.csv",
-            "denoised_sum": f"{output_base_path}/unhuddle_denoised_sum/{fov}.csv",
-            "protein": f"{output_base_path}/protein_features/{fov}.csv",
+            "intensity": os.path.join(dirs["unhuddle_norm"], f"{fov}.csv"),
+            "sum": os.path.join(dirs["unhuddle_sum"], f"{fov}.csv"),
+            "orig_sum": os.path.join(dirs["original_sum"], f"{fov}.csv"),
+            "morph": os.path.join(dirs["morph"], f"{fov}.csv"),
+            "denoised_intensity": os.path.join(dirs["unhuddle_denoised_norm"], f"{fov}.csv"),
+            "denoised_sum": os.path.join(dirs["unhuddle_denoised_sum"], f"{fov}.csv"),
+            "protein": os.path.join(dirs["protein"], f"{fov}.csv"),
         }
+
         if not all(os.path.exists(paths[k]) for k in ["intensity", "sum", "orig_sum", "morph"]):
             continue
 
@@ -103,6 +116,7 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
             X = denoised_intensity.drop(columns=["Label"], errors="ignore")
             all_layers["sum_unhuddle_denoised"].append(denoised_sum.drop(columns=["Label"], errors="ignore").values)
             X_source = "normalized_unhuddle_denoised"
+            denoised_fovs.append(fov)
             logger.debug(f"✅ Using denoised intensity data for FOV: {fov}")
         else:
             X = intensity.drop(columns=["Label"], errors="ignore")
@@ -111,14 +125,10 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
 
         all_X.append(X.values)
         fov_count += 1
-        X_shape = X.values.shape
-        logger.debug(f"📦 [{fov}] → X shape: {X_shape}")
+        logger.debug(f"📦 [{fov}] → X shape: {X.values.shape}")
 
         all_layers["sum_unhuddle"].append(sum_unhuddle.drop(columns=["Label"], errors="ignore").values)
         all_layers["sum_original"].append(sum_orig.drop(columns=["Label"], errors="ignore").values)
-        for key in all_layers:
-            if all_layers[key]:
-                layer_counts[key] += all_layers[key][-1].shape[0]
 
         if protein_df is not None:
             exclmem_cols = [col for col in protein_df.columns if col.endswith("_ExclusionMembrane_Sum_Intensity")]
@@ -129,6 +139,7 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
                 logger.info(f"✅ Reconstructed layer 'ExclMem_Sum' from protein_features for FOV: {fov}")
             else:
                 logger.warning(f"⚠️ No ExclusionMembrane_Sum_Intensity columns found in protein_features for FOV: {fov}")
+
     logger.debug(f"🧮 Final FOVs used: {fov_count}")
     logger.debug(f"🧪 Denoised FOVs used: {len(denoised_fovs)} → {denoised_fovs}")
 
@@ -138,10 +149,7 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
             shape_sum = sum(x.shape[0] for x in arrs)
             logger.debug(f"📊 Layer '{key}': {shape_sum} rows across {len(arrs)} chunks")
             if key == "sum_unhuddle_denoised":
-                assert shape_sum == n_obs, (
-                    f"❌ Mismatch for layer '{key}': "
-                    f"expected {n_obs}, got {shape_sum}"
-                )
+                assert shape_sum == n_obs, f"❌ Mismatch for layer '{key}': expected {n_obs}, got {shape_sum}"
 
     adata = AnnData(
         X=np.vstack(all_X),
@@ -165,11 +173,18 @@ def build_adata_from_outputs(output_base_path, working_path=None, output_adata_n
         if os.path.exists(mask_path):
             adata.uns["spatial"][fov] = {"segmentation": imread(mask_path)}
 
-    fitsne_path = os.path.join(output_base_path, "dr_coords", f"{fovs[0]}.csv")
-    if os.path.exists(fitsne_path):
-        coords = pd.read_csv(fitsne_path).values
-        adata.obsm["X_fitsne"] = coords
+    if "dr" in dirs and fovs:
+        fitsne_path = os.path.join(dirs["dr"], f"{fovs[0]}.csv")
+        if os.path.exists(fitsne_path):
+            coords = pd.read_csv(fitsne_path).values
+            adata.obsm["X_fitsne"] = coords
+            logger.info(f"✅ Loaded DR coordinates for FOV: {fovs[0]}")
+        else:
+            logger.warning(f"⚠️ DR coordinate file not found: {fitsne_path}")
+    else:
+        logger.info("ℹ️ Skipping DR coordinate load — 'dr' key not in dirs or no FOVs present.")
 
     adata.write_h5ad(adata_output_path)
     print(f"AnnData saved to: {adata_output_path}\n\n")
     return adata
+

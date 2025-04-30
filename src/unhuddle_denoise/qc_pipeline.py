@@ -6,27 +6,15 @@ import matplotlib.pyplot as plt
 from sklearn.linear_model import LinearRegression
 from collections import defaultdict
 from PIL import Image
-from scipy.spatial import cKDTree
 from skimage.transform import resize
 from tqdm import tqdm
+from scipy.spatial import cKDTree
+import logging
+
 
 logger = logging.getLogger(__name__)
 
 
-def create_directories(output_base_path):
-    """
-    Create standard output directories under a given base path.
-
-    Returns:
-        qc_output_dir, density_dir, segmentation_dir, storyboard_dir
-    """
-    qc = os.path.join(output_base_path, "QC")
-    dens = os.path.join(qc, "density_maps")
-    seg = os.path.join(qc, "segmentation")
-    sb = os.path.join(qc, "storyboards")
-    for d in (qc, dens, seg, sb):
-        os.makedirs(d, exist_ok=True)
-    return qc, dens, seg, sb
 
 
 def compute_density_map(mask, cells, window_size, stride):
@@ -46,8 +34,7 @@ def compute_density_map(mask, cells, window_size, stride):
 
 def perform_density_filtering(
     adata,
-    qc_dir,
-    density_dir,
+    dirs,
     window_size=50,
     stride=10,
     density_threshold=550,
@@ -57,6 +44,11 @@ def perform_density_filtering(
     """
     Spatial density QC per FOV with progress bar.
     """
+    from skimage.transform import resize
+    import matplotlib.pyplot as plt
+
+    density_dir = dirs["QC_density"]
+
     adata.obs['QC_filter_low_quality_region'] = False
     low = set(adata.obs.index[adata.obs['QC_low_intensity_filter']])
     fovs = sorted(adata.obs['fov'].unique())
@@ -70,8 +62,11 @@ def perform_density_filtering(
         filtered = [c for c in low if c.startswith(f"{fov}_")]
         dm = compute_density_map(seg, filtered, window_size, stride)
         # save
-        plt.figure(figsize=(6,6)); plt.imshow(dm, cmap='hot', vmin=density_scale[0], vmax=density_scale[1]); plt.axis('off')
-        plt.savefig(os.path.join(density_dir, f"{fov}.png"), dpi=200, bbox_inches='tight'); plt.close()
+        plt.figure(figsize=(6, 6))
+        plt.imshow(dm, cmap='hot', vmin=density_scale[0], vmax=density_scale[1])
+        plt.axis('off')
+        plt.savefig(os.path.join(density_dir, f"{fov}.png"), dpi=200, bbox_inches='tight')
+        plt.close()
         # determine region cells
         m = dm > density_threshold
         if m.shape != seg.shape:
@@ -79,22 +74,19 @@ def perform_density_filtering(
         cnt, rg = defaultdict(int), defaultdict(int)
         for y in range(seg.shape[0]):
             for x in range(seg.shape[1]):
-                lab = seg[y,x]
+                lab = seg[y, x]
                 if lab:
                     cnt[lab] += 1
-                    if m[y,x]: rg[lab] += 1
-        keep = {f"{fov}_{lab}" for lab, c in rg.items() if c/cnt[lab] > region_threshold}
+                    if m[y, x]:
+                        rg[lab] += 1
+        keep = {f"{fov}_{lab}" for lab, c in rg.items() if c / cnt[lab] > region_threshold}
         region_map[fov] = keep
-        mask = adata.obs['fov']==fov
+        mask = adata.obs['fov'] == fov
         adata.obs.loc[mask, 'QC_filter_low_quality_region'] = adata.obs.loc[mask].index.isin(keep)
     return adata, region_map
 
 
-from scipy.spatial import cKDTree
-import numpy as np
-import logging
 
-logger = logging.getLogger(__name__)
 
 
 def perform_dr_filtering(adata, radius, good_frac=0.75):
@@ -150,54 +142,104 @@ def perform_dr_filtering(adata, radius, good_frac=0.75):
     return adata
 
 
-def generate_segmentation_images(adata, fovs, density_dir, segmentation_dir, region_map):
-    os.makedirs(segmentation_dir, exist_ok=True)
+def generate_segmentation_images(adata, fovs, region_map,dirs):
+    import matplotlib.pyplot as plt
+
+    seg_dir = dirs["QC_segmentation"]
+    os.makedirs(seg_dir, exist_ok=True)
+
     for fov in tqdm(fovs, desc="🎨 Segmentation QC", unit="FOV"):
-        seg = adata.uns.get('spatial',{}).get(fov,{}).get('segmentation')
-        if seg is None: continue
-        H,W=seg.shape
-        low = set(adata.obs.query("fov==@fov and QC_low_intensity_filter").index)
+        seg = adata.uns.get('spatial', {}).get(fov, {}).get('segmentation')
+        if seg is None:
+            continue
+        H, W = seg.shape
+        low = set(adata.obs.query("fov == @fov and QC_low_intensity_filter").index)
         reg = region_map.get(fov, set())
-        drf = set(adata.obs.query("fov==@fov and QC_dr_based_filter").index)
-        img = np.zeros((H, W, 3), dtype=np.uint8)  # RGB = (0, 0, 0)
+        drf = set(adata.obs.query("fov == @fov and QC_dr_based_filter").index)
+
+        img = np.zeros((H, W, 3), dtype=np.uint8)
         for y in range(H):
             for x in range(W):
-                lab=seg[y,x]
-                if not lab: continue
-                key=f"{fov}_{lab}"
-                if key in low: img[y,x]=(255,0,0)
-                elif key in reg: img[y,x]=(0,255,0)
-                elif key in drf: img[y,x]=(255,255,0)
-                else: img[y, x] = (210, 210, 210)
-        plt.imsave(os.path.join(segmentation_dir,f"{fov}.png"), img)
+                lab = seg[y, x]
+                if not lab:
+                    continue
+                key = f"{fov}_{lab}"
+                if key in low:
+                    img[y, x] = (255, 0, 0)
+                elif key in reg:
+                    img[y, x] = (0, 255, 0)
+                elif key in drf:
+                    img[y, x] = (255, 255, 0)
+                else:
+                    img[y, x] = (210, 210, 210)
+
+        plt.imsave(os.path.join(seg_dir, f"{fov}.png"), img)
+
     logger.info("Segmentation overlays done")
 
 
-def create_storyboard(paths, out, cols=10):
-    if not paths: return
-    imgs=[Image.open(p) for p in paths]
-    w,h=min(i.width for i in imgs), min(i.height for i in imgs)
-    board=Image.new('RGB',(cols*w, ((len(imgs)+cols-1)//cols)*h),(255,255,255))
-    for i,im in enumerate(imgs): board.paste(im.resize((w,h)),((i%cols)*w,(i//cols)*h))
-    board.save(out)
 
 
-def generate_storyboards(qc_dir, dens_dir, seg_dir, sb_dir, fovs):
-    segs=[os.path.join(seg_dir,f"{f}.png") for f in fovs]
-    dens=[os.path.join(dens_dir,f"{f}.png") for f in fovs]
-    if segs: create_storyboard(segs,os.path.join(sb_dir,'segmentation_storyboard.png'))
-    if dens: create_storyboard(dens,os.path.join(sb_dir,'density_storyboard.png'))
+
+def create_storyboard(paths, out_path, cols=10):
+    """
+    Create a storyboard image from a list of image paths and save it to out_path.
+
+    Args:
+        paths (list): List of image file paths to include in the storyboard.
+        out_path (str): Output path for the storyboard PNG.
+        cols (int): Number of columns in the storyboard grid.
+    """
+    if not paths:
+        return
+
+    imgs = [Image.open(p) for p in paths]
+    w, h = min(img.width for img in imgs), min(img.height for img in imgs)
+
+    board = Image.new('RGB', (cols * w, ((len(imgs) + cols - 1) // cols) * h), (255, 255, 255))
+    for i, img in enumerate(imgs):
+        board.paste(img.resize((w, h)), ((i % cols) * w, (i // cols) * h))
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    board.save(out_path)
 
 
-import os
-import numpy as np
-import matplotlib.pyplot as plt
-import logging
 
-logger = logging.getLogger(__name__)
+def generate_storyboards(dirs, fovs):
+    """
+    Generate storyboard images for segmentation and density QC maps.
+
+    Args:
+        dirs (dict): Dictionary containing paths including:
+            - dirs["QC_density"]
+            - dirs["QC_segmentation"]
+            - dirs["QC_storyboards"]
+        fovs (list): List of FOV names.
+    """
+    seg_dir = dirs["QC_segmentation"]
+    dens_dir = dirs["QC_density"]
+    sb_dir = dirs["QC_storyboards"]
+
+    seg_paths = [os.path.join(seg_dir, f"{f}.png") for f in fovs]
+    dens_paths = [os.path.join(dens_dir, f"{f}.png") for f in fovs]
+
+    seg_out = os.path.join(sb_dir, "segmentation_storyboard.png")
+    dens_out = os.path.join(sb_dir, "density_storyboard.png")
+
+    if seg_paths:
+        create_storyboard(seg_paths, seg_out)
+    if dens_paths:
+        create_storyboard(dens_paths, dens_out)
 
 
-def generate_dr_plot(adata, qc_dir):
+def generate_dr_plot(adata, dirs):
+    """
+    Generate a scatter plot of cells colored by filtering status in DR space.
+
+    Args:
+        adata (AnnData): The annotated data matrix.
+        dirs (dict): Dictionary containing paths, including dirs["QC"].
+    """
     # Look for any DR embedding other than X_spatial
     dr_key = next((k for k in adata.obsm if k.startswith('X_') and k != 'X_spatial'), None)
 
@@ -245,25 +287,25 @@ def generate_dr_plot(adata, qc_dir):
         title_fontsize='small'
     )
 
-    os.makedirs(qc_dir, exist_ok=True)
-    out_path = os.path.join(qc_dir, 'dr_qc.png')
+    out_path = os.path.join(dirs["QC"], 'dr_qc.png')
+    os.makedirs(dirs["QC"], exist_ok=True)
     plt.savefig(out_path, dpi=200, bbox_inches='tight')
     plt.close()
     logger.info(f"🖼️ DR QC plot saved to: {out_path}")
 
 
-import os
-import pandas as pd
-import logging
+def generate_summary_tables(adata, dirs):
+    """
+    Generate summary CSVs of filtering results at overall and per-FOV level.
 
-logger = logging.getLogger(__name__)
+    Args:
+        adata (AnnData): The annotated data matrix.
+        dirs (dict): Dictionary with paths, must include dirs["QC"].
+    """
 
-def generate_summary_tables(adata, qc_dir):
     if 'filtering_status' not in adata.obs.columns:
         logger.warning("⚠️ 'filtering_status' missing in AnnData. Skipping summary table generation.")
         return
-
-    os.makedirs(qc_dir, exist_ok=True)
 
     status = adata.obs['filtering_status']
     total = len(status)
@@ -284,7 +326,7 @@ def generate_summary_tables(adata, qc_dir):
         for name, val in steps
     ]
 
-    overall_path = os.path.join(qc_dir, 'overall_stats.csv')
+    overall_path = os.path.join(dirs["QC_filtering"], 'overall_stats.csv')
     pd.DataFrame(rows).to_csv(overall_path, index=False)
     logger.info(f"📄 Wrote overall filtering stats to: {overall_path}")
 
@@ -301,37 +343,35 @@ def generate_summary_tables(adata, qc_dir):
             row[name] = (sub == val).sum() if val else len(sub)
         fov_rows.append(row)
 
-    per_fov_path = os.path.join(qc_dir, 'per_fov_stats.csv')
+    per_fov_path = os.path.join(dirs["QC_filtering"], 'per_fov_stats.csv')
     pd.DataFrame(fov_rows).to_csv(per_fov_path, index=False)
     logger.info(f"📄 Wrote per-FOV filtering stats to: {per_fov_path}")
 
-def print_success_guide(output_base_path):
+def print_success_guide(dirs):
     """
-    Print user-friendly summary of QC outputs.
+    Print user-friendly summary of QC outputs using standard dirs structure.
     """
-    qc_dir, density_dir, seg_dir, sb_dir = create_directories(output_base_path)
     print("🎉 QC pipeline completed successfully! Here are your visual and numeric outputs:")
-    print(f" - Density maps:           {density_dir}")
-    print(f" - Segmentation overlays:  {seg_dir}")
-    print(f" - Storyboards:            {sb_dir}")
 
-    # Print conditionally if DR filtering was performed
-    dr_plot = os.path.join(qc_dir, 'dr_qc.png')
+    print(f" - Density maps:           {dirs['QC_density']}")
+    print(f" - Segmentation overlays:  {dirs['QC_segmentation']}")
+    print(f" - Storyboards:            {dirs['QC_storyboards']}")
+
+    dr_plot = os.path.join(dirs["QC_filtering"], 'dr_qc.png')
     if os.path.exists(dr_plot):
-        print(f" - Dimension Reduction QC plot:             {dr_plot}")
+        print(f" - Dimension Reduction QC plot:      {dr_plot}")
 
-    overall_stats = os.path.join(qc_dir, 'overall_stats.csv')
+    overall_stats = os.path.join(dirs["QC_filtering"], 'overall_stats.csv')
     if os.path.exists(overall_stats):
         print(f" - Overall filtering stats CSV:      {overall_stats}")
 
-    per_fov_stats = os.path.join(qc_dir, 'per_fov_stats.csv')
+    per_fov_stats = os.path.join(dirs["QC_filtering"], 'per_fov_stats.csv')
     if os.path.exists(per_fov_stats):
         print(f" - Per-FOV filtering stats CSV:      {per_fov_stats}")
-import os
-import numpy as np
-import matplotlib.pyplot as plt
 
-def plot_intensity_distribution(adata, qc_dir, low_intensity_threshold):
+
+
+def plot_intensity_distribution(adata, dirs, low_intensity_threshold):
     """
     Plot total intensity distribution across all cells, with a line at the filtering threshold.
     """
@@ -356,26 +396,28 @@ def plot_intensity_distribution(adata, qc_dir, low_intensity_threshold):
     axes[1].set_title("Summed Intensity (Full Range)")
 
     plt.tight_layout()
-    os.makedirs(qc_dir, exist_ok=True)
-    out_path = os.path.join(qc_dir, "total_intensity_distribution.png")
+    out_path = os.path.join(dirs["QC_filtering"], "total_intensity_distribution.png")
     plt.savefig(out_path, dpi=150)
     plt.close()
 
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-import math
 
-def qc_plot_normalization_comparison_from_X(adata,
-                                            raw_layer="sum_unhuddle_denoised",
-                                            area_key="Area",
-                                            marker_subset=None,
-                                            pdf_all_rows_path="qc_all_cells_vs_area.pdf",
-                                            pdf_storyboard_path="qc_storyboard_per_marker.pdf"):
+
+def qc_plot_normalization_comparison_from_X_png(
+    adata,
+    dirs,
+    raw_layer="sum_unhuddle_denoised",
+    area_key="Area",
+    marker_subset=None
+):
+    """
+    Creates PNG plots of normalization comparison: Raw, Raw/Area, Scaled from adata.X.
+    Saves individual marker plots and one summary plot to QC_plot subdir of dirs.
+    """
+    out_dir = dirs.get("QC_plot", os.path.join(dirs["QC"], "normalisation_plots"))
+    os.makedirs(out_dir, exist_ok=True)
 
     raw_mat = adata.layers[raw_layer]
-    scaled_mat = adata.X  # Now from X
+    scaled_mat = adata.X
     area = adata.obs[area_key].values
 
     if marker_subset is None:
@@ -384,67 +426,88 @@ def qc_plot_normalization_comparison_from_X(adata,
     marker_idx = [i for i, name in enumerate(adata.var_names) if name in marker_subset]
     area_safe = np.where(area == 0, np.nan, area)
 
-    with PdfPages(pdf_all_rows_path) as pdf:
-        # Stack all selected marker columns together
-        raw_all = raw_mat[:, marker_idx].flatten()
-        raw_area_norm_all = (raw_mat[:, marker_idx] / area_safe[:, None]).flatten()
-        scaled_all = scaled_mat[:, marker_idx].flatten()
-        area_all = np.repeat(area, len(marker_idx))
+    # Combined plot
+    raw_all = raw_mat[:, marker_idx].flatten()
+    raw_area_norm_all = (raw_mat[:, marker_idx] / area_safe[:, None]).flatten()
+    scaled_all = scaled_mat[:, marker_idx].flatten()
+    area_all = np.repeat(area, len(marker_idx))
 
-        fig, axs = plt.subplots(1, 3, figsize=(12, 4), sharex=False)
+    fig, axs = plt.subplots(1, 3, figsize=(14, 4))
+    axs[0].scatter(area_all, raw_all, s=1, alpha=0.2)
+    axs[0].set_title("All markers - Raw")
+    axs[1].scatter(area_all, raw_area_norm_all, s=1, alpha=0.2)
+    axs[1].set_title("All markers - Raw / Area")
+    axs[2].scatter(area_all, scaled_all, s=1, alpha=0.2)
+    axs[2].set_title("All markers - Scaled")
+    for ax in axs:
+        ax.set_xlabel("Area")
+    axs[0].set_ylabel("Intensity")
+    fig.suptitle("Normalization Summary (All Markers)")
+    plt.tight_layout()
+    plt.savefig(os.path.join(out_dir, "norm_comparison_summary.png"), dpi=200)
+    plt.close()
 
-        axs[0].scatter(area_all, raw_all, s=1, alpha=0.2)
-        axs[0].set_title("All markers - Raw")
-        axs[0].set_xlabel("Area")
-        axs[0].set_ylabel("Intensity")
+    from io import BytesIO
+    from PIL import Image
 
-        axs[1].scatter(area_all, raw_area_norm_all, s=1, alpha=0.2)
-        axs[1].set_title("All markers - Raw / Area")
-        axs[1].set_xlabel("Area")
+    # Create individual per-marker plots as PIL images
+    marker_images = []
+    for j in marker_idx:
+        name = adata.var_names[j]
+        raw = raw_mat[:, j]
+        raw_area_norm = raw / area_safe
+        scaled = scaled_mat[:, j]
 
-        axs[2].scatter(area_all, scaled_all, s=1, alpha=0.2)
-        axs[2].set_title("All markers - Robust Scaled")
-        axs[2].set_xlabel("Area")
+        fig, axs = plt.subplots(1, 3, figsize=(14, 4))
+        axs[0].scatter(area, raw, s=2, alpha=0.3)
+        axs[0].set_title("Raw")
+        axs[1].scatter(area, raw_area_norm, s=2, alpha=0.3)
+        axs[1].set_title("Raw / Area")
+        axs[2].scatter(area, scaled, s=2, alpha=0.3)
+        axs[2].set_title("Scaled")
 
-        fig.suptitle("All markers vs Area (combined)")
-        plt.tight_layout()
-        pdf.savefig(fig)
-        plt.close()
-
-    with PdfPages(pdf_storyboard_path) as pdf:
-        n = len(marker_idx)
-        fig, axs = plt.subplots(n, 3, figsize=(10, 3 * n), sharex='col')
-        for i, j in enumerate(marker_idx):
-            name = adata.var_names[j]
-            raw = raw_mat[:, j]
-            raw_area_norm = raw / area_safe
-            scaled = scaled_mat[:, j]
-
-            axs[i, 0].scatter(area, raw, s=2, alpha=0.3)
-            axs[i, 0].set_ylabel(name)
-
-            axs[i, 1].scatter(area, raw_area_norm, s=2, alpha=0.3)
-
-            axs[i, 2].scatter(area, scaled, s=2, alpha=0.3)
-
-        axs[0, 0].set_title("Raw")
-        axs[0, 1].set_title("Raw / Area")
-        axs[0, 2].set_title("Robust Scaled")
-
-        for ax in axs[-1, :]:
+        for ax in axs:
             ax.set_xlabel("Area")
+        axs[0].set_ylabel(name)
 
         plt.tight_layout()
-        pdf.savefig(fig)
-        plt.close()
+        buf = BytesIO()
+        plt.savefig(buf, format="png", dpi=150)
+        plt.close(fig)
+        buf.seek(0)
+        img = Image.open(buf).convert("RGB")
+        marker_images.append(img)
 
-    return "✅ Updated: Scaled data now taken from adata.X"
+    # Create storyboard image (1 row per marker, 3 panels wide)
+    if marker_images:
+        w, h = marker_images[0].size
+        storyboard = Image.new("RGB", (w, h * len(marker_images)), (255, 255, 255))
+        for i, img in enumerate(marker_images):
+            storyboard.paste(img, (0, i * h))
+
+        storyboard_path = os.path.join(out_dir, "normalization_per marker.png")
+        storyboard.save(storyboard_path)
+        logger.info(f"🖼️ Per marker storyboard saved to: {storyboard_path}")
+
+    return f"✅ PNG normalization plots saved to {out_dir}"
+def extend_dirs_with_qc(dirs):
+    """
+    Extend an existing dirs dictionary with standardized QC subfolders.
+    Assumes dirs["QC"] already exists.
+    """
+    dirs["QC_density"] = os.path.join(dirs["QC"], "density_maps")
+    dirs["QC_segmentation"] = os.path.join(dirs["QC"], "segmentation")
+    dirs["QC_storyboards"] = os.path.join(dirs["QC"], "storyboards")
+    dirs["QC_filtering"] = os.path.join(dirs["QC"], "filtering")
+
+    for key in ["QC_density", "QC_segmentation", "QC_storyboards", "QC_filtering"]:
+        os.makedirs(dirs[key], exist_ok=True)
+
+    return dirs
 
 
-
-
-def run_qc_from_memory(args, adata):
-    qc_dir, dens, seg, sb = create_directories(args.output_base_path)
+def run_qc_from_memory(args, adata, dirs):
+    dirs = extend_dirs_with_qc(dirs)
     logger.debug('🚀 Running QC pipeline')
     logger.info(f'🔧 Low-intensity threshold = {args.low_intensity_threshold}')
     logger.info(f'🔧 Density window = {args.qc_window_size}, stride = {args.qc_stride}')
@@ -458,14 +521,14 @@ def run_qc_from_memory(args, adata):
 
     tot = adata.layers['sum_unhuddle'].sum(axis=1)
     adata.obs['total_intensity'] = tot
-    plot_intensity_distribution(adata, qc_dir, args.low_intensity_threshold)
+    plot_intensity_distribution(adata, dirs, args.low_intensity_threshold)
     adata.obs['QC_low_intensity_filter'] = tot < args.low_intensity_threshold
     low_count = int(adata.obs['QC_low_intensity_filter'].sum())
 
     # ── 2. Density-Based Region Filter ────────────────────────────────────────────
     logger.debug('🔍 Density QC')
     adata, region_map = perform_density_filtering(
-        adata, qc_dir, dens,
+        adata, dirs,
         window_size=args.qc_window_size,
         stride=args.qc_stride,
         density_threshold=args.qc_density_threshold,
@@ -491,28 +554,27 @@ def run_qc_from_memory(args, adata):
 
     # ── 5. Segmentation Overlays ──────────────────────────────────────────────────
     logger.info('🎨 Segmentation overlays')
-    generate_segmentation_images(adata, list(region_map), dens, seg, region_map)
+    generate_segmentation_images(adata, list(region_map), region_map,dirs)
 
     # ── 6. Storyboards ────────────────────────────────────────────────────────────
     logger.info('📚 Storyboards')
-    generate_storyboards(qc_dir, dens, seg, sb, list(region_map))
-    # ── 6.5 Cohort-Level Normalization QC ───────────────────────────────────────────
+    generate_storyboards(dirs, list(region_map))
+
+    # ── 6.5 Cohort-Level Normalization QC ─────────────────────────────────────────
     logger.info('📊 Cohort-level normalization QC')
-    qc_plot_normalization_comparison_from_X(
+    qc_plot_normalization_comparison_from_X_png(
         adata=adata,
-        raw_layer="sum_unhuddle_denoised",
-        marker_subset=None,
-        pdf_all_rows_path=os.path.join(qc_dir, "normalisation", "qc_all_rows.pdf"),
-        pdf_storyboard_path=os.path.join(qc_dir, "normalisation", "qc_marker_storyboard.pdf")
+        dirs=dirs,
+        marker_subset=None
     )
 
     # ── 7. DR Plot ────────────────────────────────────────────────────────────────
     logger.info('📈 Filtering results in Dimension Reduction plot')
-    generate_dr_plot(adata, qc_dir)
+    generate_dr_plot(adata, dirs)
 
     # ── 8. Summary Tables ─────────────────────────────────────────────────────────
     logger.info('📊 Summaries')
-    generate_summary_tables(adata, qc_dir)
+    generate_summary_tables(adata, dirs)
 
     # ── 9. Final Keep Flag + Save ─────────────────────────────────────────────────
     logger.info('💾 Save flagged full AnnData (no cells removed)')
@@ -522,7 +584,7 @@ def run_qc_from_memory(args, adata):
     kept_count = int(keep.sum())
     logger.info(f'🔧 Final cells flagged: retained = {kept_count} / {adata.n_obs}')
 
-    out_path = os.path.join(args.output_base_path, 'adata_objects', 'adata1.h5ad')
+    out_path = os.path.join(dirs['adata'], 'adata1.h5ad')
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     adata.write_h5ad(out_path)
     logger.info(f'💾 Saved full QC-flagged AnnData: {out_path}')
@@ -530,6 +592,8 @@ def run_qc_from_memory(args, adata):
 
     # ── 10. Final Print Summary ───────────────────────────────────────────────────
     del adata
-    print_success_guide(args.output_base_path)
+    print_success_guide(dirs)
+
+
 
 

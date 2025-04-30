@@ -17,7 +17,9 @@ from unhuddle_denoise.cli_helpers import (
     save_cli_call,
     fitsne,
     run_qc_pipeline,
-    count_total_cells_from_csvs
+    count_total_cells_from_csvs,
+    run_cohort_normalization,
+    get_available_protein_markers,
 )
 
 # These must remain top-level for multiprocessing compatibility
@@ -73,7 +75,7 @@ def main():
 
         proceed = input("⚠️ No FOVs found. Do you still want to run only AnnData creation? (y/n): ").strip().lower()
         if proceed == "y":
-            create_adata(args)
+            create_adata(args, dirs)
         else:
             print("🚫 Aborted AnnData creation.")
         return
@@ -98,12 +100,15 @@ def main():
             f"⚠️ Cohort contains only {args.total_cells:,} cells. "
             "Denoising may be unreliable below 100,000 cells."
         )
-        response = input("❓ Proceed with denoising anyway? (y/N): ").strip().lower()
-        if response not in ["y", "yes"]:
-            logger.info("⏭️ Skipping denoising due to small cohort size.")
-            args.use_denoised = False
+        if args.yes:
+            logger.info("✅ Proceeding with denoising (auto-confirmed via --yes).")
         else:
-            logger.info("✅ Proceeding with denoising despite small cohort.")
+            response = input("❓ Proceed with denoising anyway? (y/N): ").strip().lower()
+            if response not in ["y", "yes"]:
+                logger.info("⏭️ Skipping denoising due to small cohort size.")
+                args.use_denoised = False
+            else:
+                logger.info("✅ Proceeding with denoising despite small cohort.")
 
     # Stage 2a: Denoising (cohort-level)
     if args.use_denoised:
@@ -116,7 +121,7 @@ def main():
             if f.endswith(".csv")
         ]
 
-        denoised_summary_path = os.path.join(dirs["metadata_denoised"], "denoised_reallocation_summary.csv")
+        denoised_summary_path = os.path.join(dirs["QC_metadata_denoised"], "denoised_reallocation_summary.csv")
         compute_denoised_reallocation_factors(
             protein_csv_paths=protein_csv_paths,
             protein_features_dir=dirs["protein"]
@@ -138,13 +143,36 @@ def main():
         print(f"📄 Cell-level morphology metrics: {dirs['morph']}")
         print(f"📄 Raw/pre-normalization values: {args.output_base_path}\n")
 
+    # Stage 2c: Cohort-level Normalization
+
+    print("🔄 Running cohort-level normalization...")
+    protein_features = get_available_protein_markers(
+        base_path=args.base_path,
+        nuclear_markers=args.nuclear_markers
+    )
+
+    logger.debug(f"🧬 Markers selected for normalization: {protein_features}")
+    logger.debug(f"🧪 Sensor markers: {args.normalisation_markers}")
+
+    run_cohort_normalization(
+        fov_folders=fov_folders,
+        sum_dirs={
+            'original': dirs['original_sum'],
+            'corrected': dirs['unhuddle_sum'],
+            'denoised': dirs.get('unhuddle_denoised_sum')
+        },
+        dirs=dirs,
+        markers=protein_features,
+        sensor_markers=args.normalisation_markers
+    )
+
     # optional: run fitsne local (implementation complex, only advanced users)
     if args.fitsne:
         fitsne(args)
 
     # Optional: build AnnData
     if args.create_adata:
-        create_adata(args)
+        create_adata(args, dirs)
 
 
 

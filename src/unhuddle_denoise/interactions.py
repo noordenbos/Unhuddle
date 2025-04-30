@@ -241,7 +241,7 @@ def compute_solo_border_pixels(cell_mask, membrane_mask, fov_folder, markers):
 
 
 def settle_debts_intensity(fov_folder, reallocation, protein_features,
-                           original_sum_dir, unhuddle_sum_dir):
+                           dirs):
     fov_name = os.path.basename(fov_folder)
 
     if not isinstance(protein_features.index, pd.MultiIndex):
@@ -252,7 +252,8 @@ def settle_debts_intensity(fov_folder, reallocation, protein_features,
 
     orig_df = protein_features.reset_index()[["Label"] + sum_cols]
     orig_df.columns = ["Label"] + markers
-    orig_df.to_csv(os.path.join(original_sum_dir, f"{fov_name}.csv"), index=False)
+    orig_df.to_csv(os.path.join(dirs["original_sum"], f"{fov_name}.csv"), index=False)
+
 
     for label, d in reallocation.items():
         key = (fov_name, label)
@@ -264,7 +265,8 @@ def settle_debts_intensity(fov_folder, reallocation, protein_features,
 
     corr_df = protein_features.reset_index()[["Label"] + sum_cols]
     corr_df.columns = ["Label"] + markers
-    corr_df.to_csv(os.path.join(unhuddle_sum_dir, f"{fov_name}.csv"), index=False)
+    corr_df.to_csv(os.path.join(dirs["unhuddle_sum"], f"{fov_name}.csv"), index=False)
+
 
     return orig_df, corr_df
 
@@ -272,11 +274,10 @@ def settle_debts_from_residuals(
     fov_folder,
     reallocation,
     protein_features,
-    output_dir,
     cell_mask,
     membrane_mask,
-    normalisation_dir,
-    sensor_markers
+    sensor_markers,
+    dirs
 ):
     logger = logging.getLogger(__name__)
     fov_name = os.path.basename(fov_folder)
@@ -307,7 +308,8 @@ def settle_debts_from_residuals(
                 protein_features.at[key, col] += value
     corrected_df = protein_features.reset_index()[["Label"] + residual_cols]
     corrected_df.columns = ["Label"] + markers
-    corrected_df.to_csv(os.path.join(output_dir, f"{fov_name}.csv"), index=False)
+    corrected_df.to_csv(os.path.join(dirs["unhuddle_denoised_sum"], f"{fov_name}.csv"), index=False)
+
 
     return corrected_df
 

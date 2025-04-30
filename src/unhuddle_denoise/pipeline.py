@@ -20,8 +20,7 @@ from unhuddle_denoise.deepcell import create_deepcell_mask_overlay, process_deep
 
 def process_fov_features_only(
     fov_path,
-    morph_features_dir,
-    protein_features_dir,
+    dirs,
     create_nuclear_mask,
     create_deepcell_mask,
     geckodriver_path,
@@ -89,7 +88,7 @@ def process_fov_features_only(
             result["nuclear_mask_created"] = False
 
         try:
-            morph_features = extract_morphology_features(fov_path, morph_features_dir, cell_mask, files, nuclear_markers, nuclear_mask)
+            morph_features = extract_morphology_features(fov_path, cell_mask, files, nuclear_markers, nuclear_mask, dirs=dirs)
             result["morphology_extracted"] = True
         except Exception as e:
             logger.error(f"❌ Morphology feature extraction failed: {e}")
@@ -106,8 +105,8 @@ def process_fov_features_only(
 
         try:
             protein_features = extract_protein_intensity(
-                fov_path, protein_features_dir, morph_features,
-                cell_mask, membrane_mask, memexcl_mask, nuclear_markers
+                fov_path, morph_features,
+                cell_mask, membrane_mask, memexcl_mask, nuclear_markers, dirs=dirs
             )
             result["protein_intensity_extracted"] = True
         except Exception as e:
@@ -124,12 +123,7 @@ def process_fov_features_only(
 def process_fov_reallocation_only(
     fov_path,
     protein_features,
-    original_sum_dir,
-    original_norm_dir,
-    unhuddle_sum_dir,
-    unhuddle_norm_dir,
-    unhuddle_denoised_sum_dir,
-    unhuddle_denoised_norm_dir,
+    dirs,
     markers_for_normalisation,
     use_denoised,
     log_level
@@ -166,62 +160,27 @@ def process_fov_reallocation_only(
         )
 
         # ── Optional: Denoised Reallocation ─────────────────────────────
-        if use_denoised and unhuddle_denoised_sum_dir and unhuddle_denoised_norm_dir:
+        if use_denoised and "unhuddle_denoised_sum" in dirs and "unhuddle_denoised_norm" in dirs:
             logger.info(f"🔁 Running denoised reallocation for FOV: {fov_path}")
             denoised_df = settle_debts_from_residuals(
                 fov_folder=fov_path,
                 reallocation=reallocation,
                 protein_features=protein_features,
-                output_dir=unhuddle_denoised_sum_dir,
                 cell_mask=cell_mask,
                 membrane_mask=membrane_mask,
-                normalisation_dir=unhuddle_denoised_norm_dir,
-                sensor_markers=markers_for_normalisation
+                sensor_markers=markers_for_normalisation,
+                dirs=dirs
             )
+
             result["intensity_settled_denoised"] = True
-
-            fov_name = os.path.basename(fov_path)
-            denoised_output_path = os.path.join(unhuddle_denoised_sum_dir, f"{fov_name}.csv")
-            denoised_df.to_csv(denoised_output_path, index=False)
-
-            fov_name, norm_denoised = compute_normalized_intensities_for_fov(
-                fov_folder=fov_path,
-                corrected_sum_df=denoised_df,
-                sensor_markers=markers_for_normalisation
-            )
-            if norm_denoised is not None:
-                output_file = os.path.join(unhuddle_denoised_norm_dir, f"{fov_name}.csv")
-                norm_denoised.to_csv(output_file, index=False)
-                result["normalized_intensity_denoised"] = True
         else:
             logger.info(f"ℹ️ Skipping denoised reallocation for {fov_path} — flag or output dirs not set.")
 
         # ── Canonical: always run ──────────────────────────────────────
         original_sum_df, corrected_sum_df = settle_debts_intensity(
-            fov_path, reallocation, protein_features,
-            original_sum_dir, unhuddle_sum_dir
+            fov_path, reallocation, protein_features, dirs
         )
         result["intensity_settled"] = True
-
-        fov_name, norm_corrected = compute_normalized_intensities_for_fov(
-            fov_folder=fov_path,
-            corrected_sum_df=corrected_sum_df,
-            sensor_markers=markers_for_normalisation
-        )
-        if norm_corrected is not None:
-            output_file = os.path.join(unhuddle_norm_dir, f"{fov_name}.csv")
-            norm_corrected.to_csv(output_file, index=False)
-            result["normalized_intensity"] = True
-
-        _, norm_original = compute_normalized_intensities_for_fov(
-            fov_folder=fov_path,
-            corrected_sum_df=original_sum_df,
-            sensor_markers=markers_for_normalisation
-        )
-        if norm_original is not None:
-            output_file = os.path.join(original_norm_dir, f"{fov_name}.csv")
-            norm_original.to_csv(output_file, index=False)
-            result["normalized_original_intensity"] = True
 
     except Exception as e:
         logger.error(f"❌ Reallocation failed for {fov_path}: {e}")
