@@ -551,7 +551,7 @@ For each FOV (field of view) folder, the following stages are run:
 ---
 
 ## 🔁 Reallocation and Rescaling
-<img src="assets/images/example_normalisaton.png" alt="logo" width="550" align="right"/>  
+
 ### 5. **Object-Intensity Reallocation**
 - Merge morphological and protein features with the interaction dictionary.
 - Redistribute per-pixel intensities across interacting objects using weighted contributions.
@@ -570,6 +570,8 @@ For each FOV (field of view) folder, the following stages are run:
 - Output:
   - `/unhuddle_normalized/{fov}.csv`
   - `/original_normalized/{fov}.csv`
+
+<img src="assets/images/example_normalisation.png" alt="logo" width="550" align="right"/>  
 
 #### 🖼️ Normalization Visualization Module
 - Generates:
