@@ -235,9 +235,12 @@ unhuddle-denoise `
 ```
 
 
-## 🌐 7. DeepCell Integration
+## 🌐 7. DeepCell-Mesmer Integration 
 
-UNHUDDLE can upload overlays to [DeepCell.org](https://deepcell.org) using Selenium and Firefox with GeckoDriver — **no GUI interaction required**. This enables a fully automated pipeline from raw pixel data to single-cell DeepCell predictions.
+UNHUDDLE can upload overlays to [DeepCell.org](https://deepcell.org) fully headless using Selenium and Firefox with GeckoDriver — **no GUI interaction**. This enables a fully automated pipeline from raw pixel data to single-cell DeepCell predictions and unhuddle clean-up.  
+  
+NB Deepcell is **third party software**, use the webloader responsibly and cite the authors please:  
+*Greenwald, N.F., Miller, G., Moen, E. et al. Whole-cell segmentation of tissue images with human-level performance using large-scale data annotation and deep learning. Nat Biotechnol 40, 555–565 (2022). https://doi.org/10.1038/s41587-021-01094-0*
 
 ### 🛠️ Manual Setup: Firefox + GeckoDriver
 
@@ -551,7 +554,7 @@ For each FOV (field of view) folder, the following stages are run:
 ---
 
 ## 🔁 Reallocation and Rescaling
-<img src="assets/images/example_normalisaton.png" alt="logo" width="550" align="right"/>  
+
 ### 5. **Object-Intensity Reallocation**
 - Merge morphological and protein features with the interaction dictionary.
 - Redistribute per-pixel intensities across interacting objects using weighted contributions.
@@ -560,29 +563,46 @@ For each FOV (field of view) folder, the following stages are run:
   - `/unhuddle_denoised_sum/{fov}.csv` #extra in denoised mode
 
 ### 6. **Normalization**
-- Apply normalization using total protein expression per cell:
-  - Sum marker expression after unhuddle per cell
-  - Normalize per pixel cellsurface
+- Apply normalization using total protein expression per cell (allow only phenotype_markers to contribute):
+  - Sum phenotype marker expression after unhuddle per cell
+  - Normalize per pixel surface 'Area'
 - Scale the values back to 0-1 range using full cohort data:
   - If a marker has enough dynamic range; apply robust scaling to [0.1, 99.9] percentile range
-  - Fallback for lack of dynamic range is binarisation
+  - Falls back to binarisation when insufficient dynamic range, reports in QC
 - Denoised reallocation intensities are used if `--use_denoised` is active.
 - Output:
   - `/unhuddle_normalized/{fov}.csv`
   - `/original_normalized/{fov}.csv`
+  
+<img src="assets/images/example_normalisation.png" alt="logo" width="550" align="right"/>  
 
 #### 🖼️ Normalization Visualization Module
 - Generates:
   - Per-marker normalization range comparisons
   - Scatter plots of pre/post-normalized values
   - Cohort-level scaling factors
-- All outputs saved to `/qc_normalization_plots/`.
+- All outputs saved to `/qc_normalization_plots/`
+  
+---
+
+If preferred, users can perform **custom** normalization and scaling **post pipeline** using the adata object:
+
+```python
+# Simple per-area normalization
+adata.layers["sum_unhuddle_per_area"] = adata.layers["sum_unhuddle"] / adata.obs["Area"].values[:, None]
+adata.X = adata.layers["sum_unhuddle_per_area"].copy()
+adata.uns["X_source"] = "sum_unhuddle_per_area"
+```
+This example jupyter notebook snippet provides a simple per-unit-area normalization, which may be preferable in specific use cases.
+
+🔁 Tip: All raw and processed intensity layers are preserved in the AnnData object for flexible reanalysis.
+
 
 ---
 
 ## 📦 Optional Modules
 
-### 7. **DeepCell Mask Creation**
+### 7. **DeepCell Mask Creation** (third party software)
 - If `--create_deepcell_mask` is enabled:
   - RGB overlays are constructed from marker images to highlight relevant structures for segmentation.
   - By default, the overlay uses the markers specified in `--normalisation_markers` and `--nuclear_markers`.
@@ -809,7 +829,9 @@ The denoising step is optional and triggered with `--use_denoised`. For small co
 
 ---
 
-### 🎚 Normalization Strategy
+### 🎚 Phenotype Marker Normalization Strategy (not yet implemented in the pipeline)
+
+The per phenotype marker normalisation is meant to compare certain functional marker across cell types. As the claim on intensity may vary quite a bit between cell types (Treg for example in the demodata can use CD45, CD7, CD3, CD4, FOXP3; while a dendritic cell may only use CD11c, that introduce bias precluding interpretation. However if you would want to compare Tregs between areas or patients the per total protein normalisation suffices and correct efficiently for overall staining intensity between fovs and for cell size. 
 
 After raw or denoised marker intensities are computed, UNHUDDLE applies a **normalization procedure** to harmonize expression across cells:
 
