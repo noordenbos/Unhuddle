@@ -574,17 +574,6 @@ def run_qc_pipeline(args, adata, dirs):
     run_qc_from_memory(args, adata, dirs)  # Correct in-memory call
 
 
-import os
-
-# Let's define the new version of `run_cohort_normalization` that integrates:
-# - per-marker CV and sparsity-aware normalization
-# - collection of marker-level QC stats
-# - saving of both normalized CSVs and marker-level stats
-
-from typing import List
-import numpy as np
-import pandas as pd
-
 
 def run_cohort_normalization_adaptive(
     fov_folders: list[str],

@@ -80,8 +80,8 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
             "sum": os.path.join(dirs["unhuddle_sum"], f"{fov}.csv"),
             "orig_sum": os.path.join(dirs["original_sum"], f"{fov}.csv"),
             "morph": os.path.join(dirs["morph"], f"{fov}.csv"),
-            "denoised_intensity": os.path.join(dirs["unhuddle_denoised_norm"], f"{fov}.csv"),
-            "denoised_sum": os.path.join(dirs["unhuddle_denoised_sum"], f"{fov}.csv"),
+            "denoised_intensity": os.path.join(dirs.get("unhuddle_denoised_norm", ""), f"{fov}.csv") if dirs.get("unhuddle_denoised_norm") else None,
+            "denoised_sum": os.path.join(dirs.get("unhuddle_denoised_sum", ""), f"{fov}.csv") if dirs.get("unhuddle_denoised_sum") else None,
             "protein": os.path.join(dirs["protein"], f"{fov}.csv"),
         }
 
@@ -92,8 +92,15 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
         sum_unhuddle = convert_numeric(load_df(paths["sum"], fov))
         sum_orig = convert_numeric(load_df(paths["orig_sum"], fov))
         morph = convert_numeric(load_df(paths["morph"], fov))
-        denoised_intensity = convert_numeric(load_df(paths["denoised_intensity"], fov)) if os.path.exists(paths["denoised_intensity"]) else None
-        denoised_sum = convert_numeric(load_df(paths["denoised_sum"], fov)) if os.path.exists(paths["denoised_sum"]) else None
+        denoised_intensity = (
+            convert_numeric(load_df(paths["denoised_intensity"], fov))
+            if paths["denoised_intensity"] and os.path.exists(paths["denoised_intensity"]) else None
+        )
+        denoised_sum = (
+            convert_numeric(load_df(paths["denoised_sum"], fov))
+            if paths["denoised_sum"] and os.path.exists(paths["denoised_sum"]) else None
+        )
+
         protein_df = convert_numeric(load_df(paths["protein"], fov)) if os.path.exists(paths["protein"]) else None
 
         for df in [intensity, sum_unhuddle, sum_orig, morph, denoised_intensity, denoised_sum, protein_df]:

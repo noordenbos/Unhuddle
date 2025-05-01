@@ -412,8 +412,26 @@ def qc_plot_normalization_comparison_from_X_png(
     Creates PNG plots of normalization comparison: Raw, Raw/Area, Scaled from adata.X.
     Saves individual marker plots and one summary plot to QC_plot subdir of dirs.
     """
+    import os
+    import numpy as np
+    import matplotlib.pyplot as plt
+    from io import BytesIO
+    from PIL import Image
+    import logging
+
+    logger = logging.getLogger(__name__)
+
     out_dir = dirs.get("QC_plot", os.path.join(dirs["QC"], "normalisation_plots"))
     os.makedirs(out_dir, exist_ok=True)
+
+    if raw_layer not in adata.layers:
+        fallback = "sum_unhuddle"
+        if fallback in adata.layers:
+            raw_layer = fallback
+            logger.info(f"Using '{raw_layer}' for plotting QC")
+        else:
+            logger.warning(f"❌ Neither '{raw_layer}' nor fallback '{fallback}' found in adata.layers. Skipping QC plot.")
+            return "⚠️ Skipped normalization QC: raw_layer not present."
 
     raw_mat = adata.layers[raw_layer]
     scaled_mat = adata.X
@@ -445,9 +463,6 @@ def qc_plot_normalization_comparison_from_X_png(
     plt.tight_layout()
     plt.savefig(os.path.join(out_dir, "norm_comparison_summary.png"), dpi=200)
     plt.close()
-
-    from io import BytesIO
-    from PIL import Image
 
     # Create individual per-marker plots as PIL images
     marker_images = []
@@ -484,11 +499,13 @@ def qc_plot_normalization_comparison_from_X_png(
         for i, img in enumerate(marker_images):
             storyboard.paste(img, (0, i * h))
 
-        storyboard_path = os.path.join(out_dir, "normalization_per marker.png")
+        storyboard_path = os.path.join(out_dir, "normalization_per_marker.png")
         storyboard.save(storyboard_path)
         logger.info(f"🖼️ Per marker storyboard saved to: {storyboard_path}")
 
     return f"✅ PNG normalization plots saved to {out_dir}"
+
+
 def extend_dirs_with_qc(dirs):
     """
     Extend an existing dirs dictionary with standardized QC subfolders.
