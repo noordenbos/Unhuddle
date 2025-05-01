@@ -425,7 +425,7 @@ Windows: `--output_base_path results\unhuddle_extended_output`
 
 
 **Test the extensions on the demodata**
-- If you've downloaded the additional demodata add these lines to the call (step 6) and run in a fresh output folder:  
+- If you've downloaded the additional demodata add these lines to the call (step 6), NB it will run with a fresh output folder `results_extended`:  
 (make sure all your lines, but the last have a continuation indicator: `\`, for windows change to ` )  
 ```bash
 --output_base_path results_extended \
