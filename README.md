@@ -873,6 +873,20 @@ This provides a simple per-unit-area normalization, which may be preferable in s
 ✅ Python Compatibility:
 Requires Python 3.8 or higher
 
+## ❓ FAQ for New Users
+
+**Q1. I don’t have Python installed. What should I do?**  
+➡️ Download the latest Python from the official site: [https://www.python.org/downloads/windows/](https://www.python.org/downloads/windows/)  
+✅ During installation, make sure to **check the box “Add Python to PATH.”**
+
+---
+
+**Q2. I don’t have Git installed. Where can I get it?**  
+➡️ Install Git from [https://git-scm.com/download/win](https://git-scm.com/download/win)  
+✅ This also installs **Git Bash**, a terminal that supports Linux-style commands (if you run the unhuddle from bash --> use linux commands also on a windows pc).
+
+---
+
 ## 📊 Coming Soon
 UNHUDDLE will be installable via `pip install unhuddle`
 
