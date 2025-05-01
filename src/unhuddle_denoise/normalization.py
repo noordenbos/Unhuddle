@@ -27,34 +27,6 @@ def _per_cell_normalize(matrix: np.ndarray,
         norm = matrix / cell_total[:, None]
     return norm, cell_total
 
-def compute_cohort_marker_stats(all_matrices: list[np.ndarray],
-                                var_names: list[str],
-                                *,
-                                lower_pct: float = 1.0,
-                                upper_pct: float = 99.0,
-                                min_range: float = 1e-3
-                               ) -> pd.DataFrame:
-    """
-    all_matrices : list of (cells × markers) arrays from each FOV after per-cell norm
-    var_names    : list of marker names
-    Returns a DataFrame with columns [marker, p1, p99] computed cohort-wide.
-    """
-    # Stack all FOVs together (might be big – you can also compute per-chunk)
-    big = np.vstack(all_matrices)  # shape = (total_cells, n_markers)
-
-    records = []
-    for j, m in enumerate(var_names):
-        col = big[:, j]
-        nonzero = col[col > 0]
-        if nonzero.size == 0:
-            p1 = p99 = 0.0
-        else:
-            p1, p99 = np.percentile(nonzero, [lower_pct, upper_pct])
-            if (p99 - p1) < min_range:
-                p1, p99 = nonzero.min(), nonzero.max()
-        records.append({"marker": m, "p1": float(p1), "p99": float(p99)})
-    return pd.DataFrame(records)
-
 def apply_cohort_scaling(norm_matrix: np.ndarray,
                          var_names: list[str],
                          stats_df: pd.DataFrame
@@ -77,6 +49,7 @@ def apply_cohort_scaling(norm_matrix: np.ndarray,
         s = np.clip(s, 0.0, 1.0)
         s[col == 0] = 0.0
         scaled[:, j] = s
+
     return scaled
 
 
@@ -157,83 +130,108 @@ def _adaptive_marker_scaling(col: np.ndarray,
     return scaled, stats
 
 
-def total_intensity_normalize_and_scale(matrix: np.ndarray,
-                                        var_names: list[str],
-                                        sensor_markers: list[str] | None = None,
-                                        min_range: float = 1e-3,
-                                        cv_thresh: float = 0.1,
-                                        cv_frac_thresh: float = 0.10
-                                       ) -> tuple[np.ndarray, np.ndarray, pd.DataFrame]:
-    """
-    Full per-cell then per-marker normalization with adaptive CV-gated scaling.
 
-    Returns:
-      scaled_matrix : (cells × markers) numpy array in [0,1]
-      cell_total    : the per-cell normalizer used
-      stats_df      : diagnostics per marker
+
+def compute_adaptive_marker_stats_from_cohort(
+    all_matrices: list[np.ndarray],
+    var_names: list[str],
+    sample_max_cells: int = 100_000,
+    min_range: float = 1e-3,
+    cv_thresh: float = 0.1,
+    cv_frac_thresh: float = 0.10
+) -> pd.DataFrame:
     """
-    norm_matrix, cell_total = _per_cell_normalize(matrix, var_names, sensor_markers)
-    scaled = np.zeros_like(norm_matrix)
+    Cohort-wide marker-wise scaling strategy with adaptive fallback based on sparsity and CV.
+
+    Parameters
+    ----------
+    all_matrices : list of np.ndarray
+        List of (cells x markers) matrices (already per-cell normalized).
+    var_names : list of str
+        Marker names.
+    sample_max_cells : int
+        Maximum number of cells to use for cohort-wide statistics.
+    min_range : float
+        Minimum dynamic range for robust scaling.
+    cv_thresh : float
+        CV threshold for triggering binary fallback.
+    cv_frac_thresh : float
+        Sparsity threshold for triggering binary fallback.
+
+    Returns
+    -------
+    pd.DataFrame with columns:
+      marker, method, fraction_nonzero, CV, p1, p99, p_lower_pct, p_upper_pct
+    """
+
+    # Stack all matrices, with optional downsampling
+    stacked = np.vstack(all_matrices)
+    if stacked.shape[0] > sample_max_cells:
+        idx = np.random.choice(stacked.shape[0], size=sample_max_cells, replace=False)
+        stacked = stacked[idx]
+
     records = []
-    for j, var in enumerate(var_names):
-        col = norm_matrix[:, j]
-        sc, stats = _adaptive_marker_scaling(col,
-                                             min_range=min_range,
-                                             cv_thresh=cv_thresh,
-                                             cv_frac_thresh=cv_frac_thresh)
-        scaled[:, j] = sc
-        stats["marker"] = var
-        records.append(stats)
-        logger.debug(f"{var}: {stats}")
+    for j, marker in enumerate(var_names):
+        col = stacked[:, j]
+        nonzero = col[col > 0]
+        n = len(col)
 
-    stats_df = pd.DataFrame(records)
-    stats_df = stats_df[["marker", *[c for c in stats_df.columns if c != "marker"]]]
-    return scaled, cell_total, stats_df
+        if nonzero.size == 0:
+            records.append({
+                "marker": marker,
+                "marker_method": "all_zero",
+                "fraction_nonzero": 0.0,
+                "cv": None,
+                "p_lower_pct": None,
+                "p_upper_pct": None,
+                "p1": 0.0,
+                "p99": 0.0
+            })
+            continue
 
+        frac = nonzero.size / n
+        mean = nonzero.mean()
+        std = nonzero.std()
+        cv = std / mean if mean > 0 else np.inf
 
-def compute_normalized_intensities_for_fov(fov_folder: str,
-                                           corrected_sum_df: pd.DataFrame,
-                                           sensor_markers: list[str] | None = None,
-                                           min_range: float = 1e-3,
-                                           cv_thresh: float = 1.0,
-                                           cv_frac_thresh: float = 0.10
-                                          ) -> tuple[str, pd.DataFrame, pd.DataFrame]:
-    """
-    Args:
-      fov_folder       Path (basename used)
-      corrected_sum_df DataFrame with 'Label' + marker columns
-      sensor_markers   List of markers for per-cell norm
+        if frac < cv_frac_thresh or cv < cv_thresh:
+            method = "binary_by_cv_or_frac"
+            records.append({
+                "marker": marker,
+                "marker_method": method,
+                "fraction_nonzero": frac,
+                "cv": float(cv),
+                "p_lower_pct": None,
+                "p_upper_pct": None,
+                "p1": 0.0,
+                "p99": 1.0
+            })
+            continue
 
-    Returns:
-      fov_name      Basename
-      normalized_df DataFrame with 'Label' + scaled
-      stats_df      Diagnostics
-    """
-    fov_name = os.path.basename(fov_folder)
-    logger.info(f"Normalizing intensities for {fov_name}")
+        # determine percentiles
+        if frac > 0.30:
+            lower_pct, upper_pct = 0.1, 99.9
+        elif frac > 0.05:
+            lower_pct, upper_pct = 1.0, 99.0
+        else:
+            lower_pct, upper_pct = 10.0, 90.0
 
-    if "Label" not in corrected_sum_df.columns:
-        logger.error(f"{fov_name} missing 'Label'.")
-        return fov_name, None, None
+        p1, p99 = np.percentile(nonzero, [lower_pct, upper_pct])
+        if (p99 - p1) < min_range:
+            p1, p99 = nonzero.min(), nonzero.max()
 
-    marker_cols = sorted(c for c in corrected_sum_df.columns if c != "Label")
-    raw = corrected_sum_df[marker_cols].values
+        method = "robust"
 
-    scaled_matrix, cell_total, stats_df = total_intensity_normalize_and_scale(
-        raw, marker_cols,
-        sensor_markers=sensor_markers,
-        min_range=min_range,
-        cv_thresh=cv_thresh,
-        cv_frac_thresh=cv_frac_thresh
-    )
+        records.append({
+            "marker": marker,
+            "marker_method": method,
+            "fraction_nonzero": frac,
+            "cv": float(cv),
+            "p_lower_pct": lower_pct,
+            "p_upper_pct": upper_pct,
+            "p1": float(p1),
+            "p99": float(p99)
+        })
 
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(f"\n[Normalization stats for {fov_name}]\n{stats_df.to_string(index=False)}")
-
-    normalized_df = pd.DataFrame(scaled_matrix, columns=marker_cols)
-    normalized_df.insert(0, "Label", corrected_sum_df["Label"].values)
-
-    return fov_name, normalized_df, stats_df
-
-
+    return pd.DataFrame.from_records(records)
 

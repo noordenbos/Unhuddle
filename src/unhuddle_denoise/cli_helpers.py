@@ -587,81 +587,99 @@ import pandas as pd
 
 
 def run_cohort_normalization_adaptive(
-    fov_folders: List[str],
+    fov_folders: list[str],
     sum_dirs: dict,
     dirs: dict,
-    markers: List[str],
-    sensor_markers: List[str],
-    lower_pct: float = 1.0,
-    upper_pct: float = 99.0,
+    markers: list[str],
+    sensor_markers: list[str],
+    sample_max_cells: int = 100_000,
     min_range: float = 1e-3,
     cv_thresh: float = 0.1,
     cv_frac_thresh: float = 0.10,
 ):
+    """
+    Perform adaptive, cohort-aware normalization with unified scaling strategy per marker.
+    Applies the same scaling strategy (binary/robust) per marker across all FOVs.
+
+    Outputs:
+        - Normalized intensity matrices to branch folder
+        - Marker-wise QC stats (scaling strategy, CV, sparsity) to QC_normstats
+    """
+    import os
+    import glob
+    import logging
+    import pandas as pd
     from unhuddle_denoise.normalization import (
         _per_cell_normalize,
-        _adaptive_marker_scaling
+        compute_adaptive_marker_stats_from_cohort,
+        apply_cohort_scaling
     )
+
     logger = logging.getLogger(__name__)
+
+    branch_to_outdir = {
+        "original": dirs.get("original_norm"),
+        "corrected": dirs.get("unhuddle_norm"),
+        "denoised": dirs.get("unhuddle_denoised_norm"),
+    }
 
     for key in ['original', 'corrected', 'denoised']:
         src_dir = sum_dirs.get(key)
+        out_dir = branch_to_outdir.get(key)
+
         if not src_dir or not os.path.isdir(src_dir):
-            continue  # skip missing branch
+            logger.warning(f"⚠️ Skipping missing normalization input folder for branch: {key}")
+            continue
+        if not out_dir:
+            logger.warning(f"⚠️ Skipping branch {key} — no output directory set in dirs.")
+            continue
 
         fov_paths = sorted(glob.glob(os.path.join(src_dir, '*.csv')))
+        norms = []
+        labels = []
+        fovs = []
+
         for fn in fov_paths:
             fov = os.path.basename(fn).replace('.csv', '')
             df = pd.read_csv(fn)
             if "Label" not in df.columns:
-                logger.warning(f"{fov} skipped (missing Label column)")
+                logger.warning(f"⚠️ Skipping {fov} (missing Label column)")
                 continue
-
-            label_col = df["Label"].values
             mat = df[markers].values
-            norm_matrix, cell_total = _per_cell_normalize(mat, markers, sensor_markers)
+            norm_mat, _ = _per_cell_normalize(mat, markers, sensor_markers)
+            norms.append(norm_mat)
+            labels.append(df["Label"].values)
+            fovs.append(fov)
 
-            scaled = np.zeros_like(norm_matrix)
-            stats_records = []
+        if not norms:
+            logger.warning(f"⚠️ No valid FOVs found for {key}")
+            continue
 
-            for j, var in enumerate(markers):
-                col = norm_matrix[:, j]
-                sc, stats = _adaptive_marker_scaling(
-                    col,
-                    min_range=min_range,
-                    cv_thresh=cv_thresh,
-                    cv_frac_thresh=cv_frac_thresh
-                )
-                scaled[:, j] = sc
-                stats["marker"] = var
-                stats_records.append(stats)
+        # Cohort-aware strategy
+        marker_stats = compute_adaptive_marker_stats_from_cohort(
+            norms,
+            var_names=markers,
+            sample_max_cells=sample_max_cells,
+            min_range=min_range,
+            cv_thresh=cv_thresh,
+            cv_frac_thresh=cv_frac_thresh
+        )
 
-            scaled_df = pd.DataFrame(scaled, columns=markers)
-            scaled_df.insert(0, 'Label', label_col)
+        # Save global marker stats once per branch
+        qc_stats_dir = dirs.get("QC_normstats", os.path.join(out_dir, "..", "QC_normstats"))
+        os.makedirs(qc_stats_dir, exist_ok=True)
+        cohort_stats_fn = os.path.join(qc_stats_dir, f"{key}_cohort_marker_qc.csv")
+        marker_stats.to_csv(cohort_stats_fn, index=False)
+        logger.info(f"📊 Saved cohort-level marker scaling stats: {cohort_stats_fn}")
 
-            # Save normalized output
-            if key == 'original':
-                out_dir = dirs["original_norm"]
-            elif key == 'corrected':
-                out_dir = dirs["unhuddle_norm"]
-            elif key == 'denoised':
-                out_dir = dirs["unhuddle_denoised_norm"]
-            else:
-                raise ValueError(f"Unknown normalization branch: {key}")
+        # Apply and save normalized matrices
+        os.makedirs(out_dir, exist_ok=True)
+        for fov, norm_mat, lbl in zip(fovs, norms, labels):
+            scaled = apply_cohort_scaling(norm_mat, markers, marker_stats)
+            out_df = pd.DataFrame(scaled, columns=markers)
+            out_df.insert(0, "Label", lbl)
 
-            os.makedirs(out_dir, exist_ok=True)
-            out_fn = os.path.join(out_dir, f"{fov}.csv")
-            scaled_df.to_csv(out_fn, index=False)
-            logger.info(f"✅ Saved adaptive normalized matrix: {out_fn}")
-
-            # Save marker-level QC stats
-            stats_df = pd.DataFrame(stats_records)
-            stats_df = stats_df[["marker", *[c for c in stats_df.columns if c != "marker"]]]
-
-            qc_stats_dir = dirs.get("QC_normstats", os.path.join(out_dir, "..", "QC_normstats"))
-            os.makedirs(qc_stats_dir, exist_ok=True)
-            stats_out_fn = os.path.join(qc_stats_dir, f"{key}_{fov}_marker_qc.csv")
-            stats_df.to_csv(stats_out_fn, index=False)
-            logger.debug(f"📊 Saved marker QC stats: {stats_out_fn}")
-
+            out_path = os.path.join(out_dir, f"{fov}.csv")
+            out_df.to_csv(out_path, index=False)
+            logger.info(f"✅ Saved cohort-normalized FOV: {out_path}")
 
