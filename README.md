@@ -565,14 +565,26 @@ For each FOV (field of view) folder, the following stages are run:
 ### 6. **Normalization**
 - Apply normalization using total protein expression per cell:
   - Sum marker expression after unhuddle per cell
-  - Normalize per pixel cellsurface
+  - Normalize per pixel cellsurface Area
 - Scale the values back to 0-1 range using full cohort data:
   - If a marker has enough dynamic range; apply robust scaling to [0.1, 99.9] percentile range
-  - Fallback for lack of dynamic range is binarisation
+  - Falls back to binarisation when insufficient dynamic range
 - Denoised reallocation intensities are used if `--use_denoised` is active.
 - Output:
   - `/unhuddle_normalized/{fov}.csv`
   - `/original_normalized/{fov}.csv`
+  
+If preferred, users can perform **custom normalization and scaling** post pipeline using the adata object:
+
+```python
+# Simple per-area normalization
+adata.layers["sum_unhuddle_per_area"] = adata.layers["sum_unhuddle"] / adata.obs["Area"].values[:, None]
+adata.X = adata.layers["sum_unhuddle_per_area"].copy()
+adata.uns["X_source"] = "sum_unhuddle_per_area"
+```
+This example jupyter notebook snippet provides a simple per-unit-area normalization, which may be preferable in specific use cases.
+
+🔁 Tip: All raw and processed intensity layers are preserved in the AnnData object for flexible reanalysis.
 
 <img src="assets/images/example_normalisation.png" alt="logo" width="550" align="right"/>  
 
