@@ -235,9 +235,12 @@ unhuddle-denoise `
 ```
 
 
-## 🌐 7. DeepCell Integration
+## 🌐 7. DeepCell-Mesmer Integration 
 
-UNHUDDLE can upload overlays to [DeepCell.org](https://deepcell.org) using Selenium and Firefox with GeckoDriver — **no GUI interaction required**. This enables a fully automated pipeline from raw pixel data to single-cell DeepCell predictions.
+UNHUDDLE can upload overlays to [DeepCell.org](https://deepcell.org) fully headless using Selenium and Firefox with GeckoDriver — **no GUI interaction**. This enables a fully automated pipeline from raw pixel data to single-cell DeepCell predictions and unhuddle clean-up.  
+  
+NB Deepcell is **third party software**, use the webloader responsibly and cite the authors please:  
+*Greenwald, N.F., Miller, G., Moen, E. et al. Whole-cell segmentation of tissue images with human-level performance using large-scale data annotation and deep learning. Nat Biotechnol 40, 555–565 (2022). https://doi.org/10.1038/s41587-021-01094-0*
 
 ### 🛠️ Manual Setup: Firefox + GeckoDriver
 
