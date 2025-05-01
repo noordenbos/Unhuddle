@@ -587,7 +587,7 @@ For each FOV (field of view) folder, the following stages are run:
 
 ## 📦 Optional Modules
 
-### 7. **DeepCell Mask Creation**
+### 7. **DeepCell Mask Creation** (third party software)
 - If `--create_deepcell_mask` is enabled:
   - RGB overlays are constructed from marker images to highlight relevant structures for segmentation.
   - By default, the overlay uses the markers specified in `--normalisation_markers` and `--nuclear_markers`.
