@@ -33,46 +33,82 @@ def apply_cohort_scaling(norm_matrix: np.ndarray,
                         ) -> np.ndarray:
     """
     norm_matrix : (cells × markers) per-cell-normalized array
-    stats_df    : output of compute_cohort_marker_stats
-    Returns scaled_matrix in [0,1] using the fixed p1/p99 for each marker.
+    stats_df    : output of compute_adaptive_marker_stats_from_cohort
+    Returns scaled_matrix in [0,1] using cohort-wide scaling strategy.
     """
     scaled = np.zeros_like(norm_matrix)
+
     for j, m in enumerate(var_names):
-        p1 = stats_df.loc[stats_df["marker"] == m, "p1"].iloc[0]
-        p99 = stats_df.loc[stats_df["marker"] == m, "p99"].iloc[0]
+        row = stats_df.loc[stats_df["marker"] == m]
+        if row.empty:
+            continue
+
+        method = row["marker_method"].values[0]
+        fallback = row["fallback"].values[0] if "fallback" in row.columns else None
         col = norm_matrix[:, j]
-        with np.errstate(divide='ignore', invalid='ignore'):
-            if (p99 - p1) >= 1e-3:
+
+        if method == "all_zero":
+            scaled[:, j] = 0.0
+            continue
+
+        elif method == "binary_by_cv_or_frac":
+            scaled[:, j] = (col > 0).astype(float)
+            continue
+
+        elif method == "robust":
+            p1 = row["p1"].values[0]
+            p99 = row["p99"].values[0]
+
+            with np.errstate(divide='ignore', invalid='ignore'):
                 s = (col - p1) / (p99 - p1)
-            else:
-                s = np.zeros_like(col)
-        s = np.clip(s, 0.0, 1.0)
-        s[col == 0] = 0.0
-        scaled[:, j] = s
+                s = np.clip(s, 0.0, 1.0)
+                s[col == 0] = 0.0
+
+            # Fallback transform if robust scaling wiped dynamic range
+            if fallback == "log1p":
+                transformed = np.log1p(col)
+                min_, max_ = np.nanmin(transformed), np.nanmax(transformed)
+                s = (transformed - min_) / (max_ - min_) if max_ > min_ else np.zeros_like(transformed)
+                s = np.clip(s, 0.0, 1.0)
+                s[col == 0] = 0.0
+
+            elif fallback == "sqrt":
+                transformed = np.sqrt(col)
+                min_, max_ = np.nanmin(transformed), np.nanmax(transformed)
+                s = (transformed - min_) / (max_ - min_) if max_ > min_ else np.zeros_like(transformed)
+                s = np.clip(s, 0.0, 1.0)
+                s[col == 0] = 0.0
+
+            scaled[:, j] = s
 
     return scaled
 
 
-def _adaptive_marker_scaling(col: np.ndarray,
-                             min_range: float = 1e-3,
-                             cv_thresh: float = 0.1,
-                             cv_frac_thresh: float = 0.10
-                            ) -> tuple[np.ndarray, dict]:
+def _adaptive_marker_scaling(
+    col: np.ndarray,
+    raw_area_norm: np.ndarray | None = None,
+    min_range: float = 1e-3,
+    cv_thresh: float = 0.1,
+    cv_frac_thresh: float = 0.10,
+    wipeout_frac_thresh: float = 0.95,
+    dynrange_thresh: float = 0.1,
+) -> tuple[np.ndarray, dict]:
     """
-    Scale a single marker column using CV gating + sparsity-aware robust scaling:
-      1. If no non-zero values -> all zeros.
-      2. Compute fraction_nonzero and CV on nonzeros.
-      3. If (fraction_nonzero < cv_frac_thresh AND CV < cv_thresh) -> binary presence/absence.
-      4. Else pick percentiles:
-           >30% nonzero -> 1–99%
-           5–30%  -> 5–95%
-           <5%    -> 10–90%
-      5. If (p99 - p1) < min_range -> fallback to true min/max.
-      6. Scale and clip to [0,1], preserving original zeros.
+    Adaptive scaling with optional log1p fallback if robust scaling wipes signal.
 
-    Returns (scaled_col, stats_dict).
+    Parameters:
+        col              : per-cell normalized marker values
+        raw_area_norm    : raw / area for fallback dynamic range check
+        min_range        : min range for robust scaling
+        cv_thresh        : CV threshold for binarization
+        cv_frac_thresh   : Fraction nonzero threshold for binarization
+        wipeout_frac_thresh : trigger log1p fallback if this % of scaled = 0
+        dynrange_thresh  : min dynamic range in raw_area_norm to justify fallback
+
+    Returns:
+        scaled_col (np.ndarray) : scaled values in [0,1]
+        stats     (dict)        : method + stats used
     """
-    # 1) collect nonzeros
     nonzero = col[col > 0]
     n = len(col)
     if nonzero.size == 0:
@@ -81,13 +117,12 @@ def _adaptive_marker_scaling(col: np.ndarray,
             "fraction_nonzero": 0.0
         }
 
-    # 2) compute fraction and CV
     frac = nonzero.size / n
     mean = nonzero.mean()
-    std  = nonzero.std()
-    cv   = std / mean if mean > 0 else np.inf
+    std = nonzero.std()
+    cv = std / mean if mean > 0 else np.inf
 
-    # binary gate if sparse OR low CV
+    # === Binary fallback (low signal or sparse) ===
     if frac < cv_frac_thresh or cv < cv_thresh:
         scaled = (col > 0).astype(float)
         return scaled, {
@@ -96,7 +131,7 @@ def _adaptive_marker_scaling(col: np.ndarray,
             "cv": float(cv)
         }
 
-    # 4) percentile-based robust scaling
+    # === Robust scaling ===
     if frac > 0.30:
         lower_pct, upper_pct = 0.1, 99.9
     elif frac > 0.05:
@@ -108,24 +143,38 @@ def _adaptive_marker_scaling(col: np.ndarray,
     if (p99 - p1) < min_range:
         p1, p99 = nonzero.min(), nonzero.max()
 
-    # 5) scale
     with np.errstate(divide='ignore', invalid='ignore'):
-        if (p99 - p1) >= min_range:
-            scaled = (col - p1) / (p99 - p1)
-        else:
-            scaled = np.zeros_like(col)
+        scaled = (col - p1) / (p99 - p1) if (p99 - p1) >= min_range else np.zeros_like(col)
 
-    # 6) clip and maintain zeros
     scaled = np.clip(scaled, 0.0, 1.0)
     scaled[col == 0] = 0.0
 
+    # === Check if scaling wiped out signal ===
+    wipeout = np.mean(scaled == 0.0) > wipeout_frac_thresh
+    fallback_applied = False
+
+    if wipeout and raw_area_norm is not None:
+        raw_nonzero = raw_area_norm[raw_area_norm > 0]
+        if raw_nonzero.size > 0:
+            dyn_range = np.nanpercentile(raw_nonzero, 99.5) - np.nanpercentile(raw_nonzero, 0.5)
+            if dyn_range > dynrange_thresh:
+                # Try log1p fallback
+                fallback_applied = True
+                log_scaled = np.log1p(col)
+                log_scaled = log_scaled / np.nanmax(log_scaled) if np.nanmax(log_scaled) > 0 else log_scaled
+                log_scaled[col == 0] = 0.0
+                scaled = log_scaled
+
     stats = {
-        "marker_method": "robust",
+        "marker_method": "robust_fallback_log1p" if fallback_applied else "robust",
         "fraction_nonzero": frac,
+        "cv": float(cv),
         "p_lower_pct": lower_pct,
         "p_upper_pct": upper_pct,
         "p1": float(p1),
-        "p99": float(p99)
+        "p99": float(p99),
+        "wipeout_triggered": wipeout,
+        "fallback_applied": fallback_applied,
     }
     return scaled, stats
 
@@ -141,30 +190,14 @@ def compute_adaptive_marker_stats_from_cohort(
     cv_frac_thresh: float = 0.10
 ) -> pd.DataFrame:
     """
-    Cohort-wide marker-wise scaling strategy with adaptive fallback based on sparsity and CV.
-
-    Parameters
-    ----------
-    all_matrices : list of np.ndarray
-        List of (cells x markers) matrices (already per-cell normalized).
-    var_names : list of str
-        Marker names.
-    sample_max_cells : int
-        Maximum number of cells to use for cohort-wide statistics.
-    min_range : float
-        Minimum dynamic range for robust scaling.
-    cv_thresh : float
-        CV threshold for triggering binary fallback.
-    cv_frac_thresh : float
-        Sparsity threshold for triggering binary fallback.
+    Cohort-wide marker-wise scaling strategy with adaptive fallback based on sparsity, CV,
+    and dynamic range checks. If robust scaling wipes out >95% of signal, fallback to log1p or sqrt.
 
     Returns
     -------
     pd.DataFrame with columns:
-      marker, method, fraction_nonzero, CV, p1, p99, p_lower_pct, p_upper_pct
+      marker, marker_method, fraction_nonzero, cv, p1, p99, p_lower_pct, p_upper_pct, fallback
     """
-
-    # Stack all matrices, with optional downsampling
     stacked = np.vstack(all_matrices)
     if stacked.shape[0] > sample_max_cells:
         idx = np.random.choice(stacked.shape[0], size=sample_max_cells, replace=False)
@@ -185,7 +218,8 @@ def compute_adaptive_marker_stats_from_cohort(
                 "p_lower_pct": None,
                 "p_upper_pct": None,
                 "p1": 0.0,
-                "p99": 0.0
+                "p99": 0.0,
+                "fallback": None
             })
             continue
 
@@ -195,20 +229,19 @@ def compute_adaptive_marker_stats_from_cohort(
         cv = std / mean if mean > 0 else np.inf
 
         if frac < cv_frac_thresh or cv < cv_thresh:
-            method = "binary_by_cv_or_frac"
             records.append({
                 "marker": marker,
-                "marker_method": method,
+                "marker_method": "binary_by_cv_or_frac",
                 "fraction_nonzero": frac,
                 "cv": float(cv),
                 "p_lower_pct": None,
                 "p_upper_pct": None,
                 "p1": 0.0,
-                "p99": 1.0
+                "p99": 1.0,
+                "fallback": None
             })
             continue
 
-        # determine percentiles
         if frac > 0.30:
             lower_pct, upper_pct = 0.1, 99.9
         elif frac > 0.05:
@@ -217,21 +250,32 @@ def compute_adaptive_marker_stats_from_cohort(
             lower_pct, upper_pct = 10.0, 90.0
 
         p1, p99 = np.percentile(nonzero, [lower_pct, upper_pct])
+        fallback = None
         if (p99 - p1) < min_range:
+            fallback = "minmax"
             p1, p99 = nonzero.min(), nonzero.max()
-
-        method = "robust"
+            if (p99 - p1) < min_range:
+                if np.isfinite(nonzero).all():
+                    fallback = "log1p"
+                    nonzero_log = np.log1p(nonzero)
+                    p1, p99 = np.percentile(nonzero_log, [lower_pct, upper_pct])
+                    if (p99 - p1) < min_range:
+                        fallback = "sqrt"
+                        nonzero_sqrt = np.sqrt(nonzero)
+                        p1, p99 = np.percentile(nonzero_sqrt, [lower_pct, upper_pct])
 
         records.append({
             "marker": marker,
-            "marker_method": method,
+            "marker_method": "robust",
             "fraction_nonzero": frac,
             "cv": float(cv),
             "p_lower_pct": lower_pct,
             "p_upper_pct": upper_pct,
             "p1": float(p1),
-            "p99": float(p99)
+            "p99": float(p99),
+            "fallback": fallback
         })
 
     return pd.DataFrame.from_records(records)
+
 
