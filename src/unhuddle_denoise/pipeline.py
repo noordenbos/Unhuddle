@@ -6,7 +6,6 @@ logger = logging.getLogger(__name__)
 from skimage import io
 from unhuddle_denoise.masks import process_cell_mask, process_nuclear_mask, process_membrane_masks, load_fov_files
 from unhuddle_denoise.features import extract_morphology_features, extract_protein_intensity
-from unhuddle_denoise.normalization import compute_normalized_intensities_for_fov
 from unhuddle_denoise.interactions import (
     compute_border_interactions,
     compute_background_interactions,

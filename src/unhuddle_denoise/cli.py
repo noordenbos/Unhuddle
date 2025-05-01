@@ -18,7 +18,7 @@ from unhuddle_denoise.cli_helpers import (
     fitsne,
     run_qc_pipeline,
     count_total_cells_from_csvs,
-    run_cohort_normalization,
+    run_cohort_normalization_adaptive,
     get_available_protein_markers,
 )
 
@@ -154,7 +154,7 @@ def main():
     logger.debug(f"🧬 Markers selected for normalization: {protein_features}")
     logger.debug(f"🧪 Sensor markers: {args.normalisation_markers}")
 
-    run_cohort_normalization(
+    run_cohort_normalization_adaptive(
         fov_folders=fov_folders,
         sum_dirs={
             'original': dirs['original_sum'],

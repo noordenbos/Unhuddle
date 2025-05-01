@@ -574,63 +574,72 @@ def run_qc_pipeline(args, adata, dirs):
     run_qc_from_memory(args, adata, dirs)  # Correct in-memory call
 
 
+import os
 
-def run_cohort_normalization(
-    fov_folders: list[str],
-    sum_dirs: dict[str,str],
-    dirs: dict[str,str],
-    markers: list[str],
-    sensor_markers: list[str],
+# Let's define the new version of `run_cohort_normalization` that integrates:
+# - per-marker CV and sparsity-aware normalization
+# - collection of marker-level QC stats
+# - saving of both normalized CSVs and marker-level stats
+
+from typing import List
+import numpy as np
+import pandas as pd
+
+
+def run_cohort_normalization_adaptive(
+    fov_folders: List[str],
+    sum_dirs: dict,
+    dirs: dict,
+    markers: List[str],
+    sensor_markers: List[str],
     lower_pct: float = 1.0,
     upper_pct: float = 99.0,
-    min_range: float = 1e-3
+    min_range: float = 1e-3,
+    cv_thresh: float = 0.1,
+    cv_frac_thresh: float = 0.10,
 ):
-    """
-    Perform cohort-level normalization for ORIGINAL, CORRECTED(unhuddle), and optional DENOISED sums(unhuddle+denoiser).
-    sum_dirs: {
-      'original': original_sum_dir,
-      'corrected': corrected_sum_dir,
-      'denoised': denoised_sum_dir or ''
-    }
-    Writes out per-FOV cohort-normalized CSVs and stats in cohort_out_dir.
-    """
     from unhuddle_denoise.normalization import (
         _per_cell_normalize,
-        compute_cohort_marker_stats,
-        apply_cohort_scaling
+        _adaptive_marker_scaling
     )
     logger = logging.getLogger(__name__)
+
     for key in ['original', 'corrected', 'denoised']:
         src_dir = sum_dirs.get(key)
         if not src_dir or not os.path.isdir(src_dir):
             continue  # skip missing branch
-        # collect per-FOV label + matrix
-        fov_paths = sorted(glob.glob(os.path.join(src_dir, '*.csv')))
-        mats = []
-        labels = []
-        fovs = []
-        for fn in fov_paths:
-            fov = os.path.basename(fn).replace('.csv','')
-            df = pd.read_csv(fn)
-            labels.append(df['Label'].values)
-            mats.append(df[markers].values)
-            fovs.append(fov)
-        # per-cell normalize each
-        norms = [ _per_cell_normalize(m, markers, sensor_markers)[0] for m in mats ]
-        # compute cohort p1/p99
-        stats = compute_cohort_marker_stats(norms, markers,
-                                           lower_pct=lower_pct,
-                                           upper_pct=upper_pct,
-                                           min_range=min_range)
-        # save cohort stats
-        stats.to_csv(os.path.join(dirs["QC_normstats"], f"{key}_cohort_stats.csv"), index=False)
-        # apply cohort scaling and save
-        # apply cohort scaling and save
-        for fov, norm_mat, lbl in zip(fovs, norms, labels):
-            scaled = apply_cohort_scaling(norm_mat, markers, stats)
-            out = pd.DataFrame(scaled, columns=markers)
-            out.insert(0, 'Label', lbl)
 
+        fov_paths = sorted(glob.glob(os.path.join(src_dir, '*.csv')))
+        for fn in fov_paths:
+            fov = os.path.basename(fn).replace('.csv', '')
+            df = pd.read_csv(fn)
+            if "Label" not in df.columns:
+                logger.warning(f"{fov} skipped (missing Label column)")
+                continue
+
+            label_col = df["Label"].values
+            mat = df[markers].values
+            norm_matrix, cell_total = _per_cell_normalize(mat, markers, sensor_markers)
+
+            scaled = np.zeros_like(norm_matrix)
+            stats_records = []
+
+            for j, var in enumerate(markers):
+                col = norm_matrix[:, j]
+                sc, stats = _adaptive_marker_scaling(
+                    col,
+                    min_range=min_range,
+                    cv_thresh=cv_thresh,
+                    cv_frac_thresh=cv_frac_thresh
+                )
+                scaled[:, j] = sc
+                stats["marker"] = var
+                stats_records.append(stats)
+
+            scaled_df = pd.DataFrame(scaled, columns=markers)
+            scaled_df.insert(0, 'Label', label_col)
+
+            # Save normalized output
             if key == 'original':
                 out_dir = dirs["original_norm"]
             elif key == 'corrected':
@@ -640,6 +649,19 @@ def run_cohort_normalization(
             else:
                 raise ValueError(f"Unknown normalization branch: {key}")
 
+            os.makedirs(out_dir, exist_ok=True)
             out_fn = os.path.join(out_dir, f"{fov}.csv")
-            logger.info(f"✅ Saved cohort-normalized matrix: {out_fn}")
-            out.to_csv(out_fn, index=False)
+            scaled_df.to_csv(out_fn, index=False)
+            logger.info(f"✅ Saved adaptive normalized matrix: {out_fn}")
+
+            # Save marker-level QC stats
+            stats_df = pd.DataFrame(stats_records)
+            stats_df = stats_df[["marker", *[c for c in stats_df.columns if c != "marker"]]]
+
+            qc_stats_dir = dirs.get("QC_normstats", os.path.join(out_dir, "..", "QC_normstats"))
+            os.makedirs(qc_stats_dir, exist_ok=True)
+            stats_out_fn = os.path.join(qc_stats_dir, f"{key}_{fov}_marker_qc.csv")
+            stats_df.to_csv(stats_out_fn, index=False)
+            logger.debug(f"📊 Saved marker QC stats: {stats_out_fn}")
+
+
