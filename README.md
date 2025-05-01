@@ -563,12 +563,12 @@ For each FOV (field of view) folder, the following stages are run:
   - `/unhuddle_denoised_sum/{fov}.csv` #extra in denoised mode
 
 ### 6. **Normalization**
-- Apply normalization using total protein expression per cell:
-  - Sum marker expression after unhuddle per cell
-  - Normalize per pixel cellsurface Area
+- Apply normalization using total protein expression per cell (allow only phenotype_markers to contribute):
+  - Sum phenotype marker expression after unhuddle per cell
+  - Normalize per pixel surface 'Area'
 - Scale the values back to 0-1 range using full cohort data:
   - If a marker has enough dynamic range; apply robust scaling to [0.1, 99.9] percentile range
-  - Falls back to binarisation when insufficient dynamic range
+  - Falls back to binarisation when insufficient dynamic range, reports in QC
 - Denoised reallocation intensities are used if `--use_denoised` is active.
 - Output:
   - `/unhuddle_normalized/{fov}.csv`
