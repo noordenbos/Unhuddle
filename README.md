@@ -551,19 +551,21 @@ For each FOV (field of view) folder, the following stages are run:
 ---
 
 ## 🔁 Reallocation and Rescaling
-
+<img src="assets/images/example_normalisaton.png" alt="logo" width="550" align="right"/>  
 ### 5. **Object-Intensity Reallocation**
 - Merge morphological and protein features with the interaction dictionary.
-- Redistribute membrane-excluded per-pixel intensities across interacting objects using weighted contributions.
+- Redistribute per-pixel intensities across interacting objects using weighted contributions.
 - Output:
   - `/unhuddle_sum/{fov}.csv`
-  - `/original_sum/{fov}.csv`
+  - `/unhuddle_denoised_sum/{fov}.csv` #extra in denoised mode
 
 ### 6. **Normalization**
-- Apply normalization using `--normalisation_markers` (e.g., CD45, CD3, Vimentin):
-  - Compute a **weighted mean normalization factor** per cell.
-  - Scale all markers per cell using this factor.
-  - Apply robust scaling to [0.1, 99.9] percentile range (per marker).
+- Apply normalization using total protein expression per cell:
+  - Sum marker expression after unhuddle per cell
+  - Normalize per pixel cellsurface
+- Scale the values back to 0-1 range using full cohort data:
+  - If a marker has enough dynamic range; apply robust scaling to [0.1, 99.9] percentile range
+  - Fallback for lack of dynamic range is binarisation
 - Denoised reallocation intensities are used if `--use_denoised` is active.
 - Output:
   - `/unhuddle_normalized/{fov}.csv`
