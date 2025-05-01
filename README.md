@@ -814,7 +814,9 @@ The denoising step is optional and triggered with `--use_denoised`. For small co
 
 ---
 
-### 🎚 Normalization Strategy
+### 🎚 Phenotype Marker Normalization Strategy (not yet implemented in the pipeline)
+
+The per phenotype marker normalisation is meant to compare certain functional marker across cell types. As the claim on intensity may vary quite a bit between cell types (Treg for example in the demodata can use CD45, CD7, CD3, CD4, FOXP3; while a dendritic cell may only use CD11c, that introduce bias precluding interpretation. However if you would want to compare Tregs between areas or patients the per total protein normalisation suffices and correct efficiently for overall staining intensity between fovs and for cell size. 
 
 After raw or denoised marker intensities are computed, UNHUDDLE applies a **normalization procedure** to harmonize expression across cells:
 
