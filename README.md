@@ -574,7 +574,18 @@ For each FOV (field of view) folder, the following stages are run:
   - `/unhuddle_normalized/{fov}.csv`
   - `/original_normalized/{fov}.csv`
   
-If preferred, users can perform **custom normalization and scaling** post pipeline using the adata object:
+<img src="assets/images/example_normalisation.png" alt="logo" width="550" align="right"/>  
+
+#### 🖼️ Normalization Visualization Module
+- Generates:
+  - Per-marker normalization range comparisons
+  - Scatter plots of pre/post-normalized values
+  - Cohort-level scaling factors
+- All outputs saved to `/qc_normalization_plots/`
+  
+---
+
+If preferred, users can perform **custom** normalization and scaling **post pipeline** using the adata object:
 
 ```python
 # Simple per-area normalization
@@ -586,14 +597,6 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 
 🔁 Tip: All raw and processed intensity layers are preserved in the AnnData object for flexible reanalysis.
 
-<img src="assets/images/example_normalisation.png" alt="logo" width="550" align="right"/>  
-
-#### 🖼️ Normalization Visualization Module
-- Generates:
-  - Per-marker normalization range comparisons
-  - Scatter plots of pre/post-normalized values
-  - Cohort-level scaling factors
-- All outputs saved to `/qc_normalization_plots/`.
 
 ---
 
