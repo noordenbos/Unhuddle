@@ -175,25 +175,28 @@ def apply_cohort_scaling(
 
 
 
+import numpy as np
+import pandas as pd
+from typing import List
+
 def compute_adaptive_marker_stats_from_cohort(
         all_matrices: List[np.ndarray],
         var_names: List[str],
         sample_max_cells: int = 100_000,
         min_range: float = 1e-3,
-        cv_thresh: float = 0.1,
-        cv_frac_thresh: float = 0.10
+        cv_frac_thresh: float = 0.05
 ) -> pd.DataFrame:
     """
     Build cohort‐wide scaling stats for each marker with adaptive fallbacks.
 
     Steps per marker:
       1. Filter to finite values, optionally downsample across all FOVs.
-      2. Compute fraction_nonzero, CV.
-      3. If too sparse or low‐CV → binary scaling.
+      2. Compute fraction_nonzero.
+      3. If too sparse → binary scaling. (cv_frac_thresh)
       4. Else: compute robust percentiles at adaptive cutoffs.
       5. If (p99-p1)<min_range → try: minmax, log1p, sqrt, in that order.
+      *. cutoff for spread of non-zero values per marker is deprecated
     """
-    # Stack & (optionally) downsample
     X = np.vstack(all_matrices)
     if X.shape[0] > sample_max_cells:
         idx = np.random.choice(X.shape[0], sample_max_cells, replace=False)
@@ -202,9 +205,9 @@ def compute_adaptive_marker_stats_from_cohort(
     records = []
     for j, marker in enumerate(var_names):
         col = X[:, j]
-        # drop NaN/inf
         finite = col[np.isfinite(col)]
         n_total = finite.size
+
         if n_total == 0:
             records.append({
                 "marker": marker,
@@ -215,7 +218,7 @@ def compute_adaptive_marker_stats_from_cohort(
                 "p_upper_pct": None,
                 "p1": 0.0,
                 "p99": 0.0,
-                "fallback": None
+                "fallback": "all_zero"
             })
             continue
 
@@ -225,22 +228,22 @@ def compute_adaptive_marker_stats_from_cohort(
         std = nonzero.std() if nonzero.size else 0.0
         cv = (std / mean) if mean > 0 else np.inf
 
-        # 1) binary fallback?
-        if nonzero.size == 0 or frac < cv_frac_thresh or cv < cv_thresh:
+        # 1) binary fallback by sparsity only
+        if frac < cv_frac_thresh:
             records.append({
                 "marker": marker,
-                "marker_method": "binary_by_cv_or_frac",
+                "marker_method": "binary_by_frac",
                 "fraction_nonzero": frac,
                 "cv": float(cv),
                 "p_lower_pct": None,
                 "p_upper_pct": None,
                 "p1": 0.0,
                 "p99": 1.0,
-                "fallback": None
+                "fallback": "binary"
             })
             continue
 
-        # 2) pick robust percentiles
+        # 2) choose robust percentile strategy
         if frac > 0.30:
             low_pct, high_pct = 0.1, 99.9
         elif frac > 0.05:
@@ -252,7 +255,7 @@ def compute_adaptive_marker_stats_from_cohort(
         method = "robust"
         fallback = None
 
-        # 3) if too narrow, try sequential fallbacks
+        # 3) fallback if range too narrow
         if (p99 - p1) < min_range:
             for fb_name, transform in [
                 ("minmax", lambda x: x),
@@ -274,7 +277,7 @@ def compute_adaptive_marker_stats_from_cohort(
             "marker": marker,
             "marker_method": method,
             "fraction_nonzero": frac,
-            "cv": float(cv),
+            "cv": float(cv),  # retained for diagnostic value
             "p_lower_pct": low_pct,
             "p_upper_pct": high_pct,
             "p1": float(p1),
@@ -283,6 +286,7 @@ def compute_adaptive_marker_stats_from_cohort(
         })
 
     return pd.DataFrame.from_records(records)
+
 
 
 
