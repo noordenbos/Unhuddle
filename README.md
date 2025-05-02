@@ -875,15 +875,77 @@ Requires Python 3.8 or higher
 
 ## ❓ FAQ for New Users
 
-**Q1. I don’t have Python installed. What should I do?**  
-➡️ Download the latest Python from the official site: [https://www.python.org/downloads/windows/](https://www.python.org/downloads/windows/)  
-✅ During installation, make sure to **check the box “Add Python to PATH.”**
+---
+
+### **Q1. I don’t have Python installed. What should I do?**
+
+➡️ **Windows:** Download from [python.org/downloads/windows](https://www.python.org/downloads/windows/)  
+✅ During installation, **check the box “Add Python to PATH.”**
+
+➡️ **macOS:** Python 3 is often pre-installed, but it's recommended to install via [Homebrew](https://brew.sh/):  
+```bash
+brew install python
+```
+
+➡️ **Linux (Debian/Ubuntu):**  
+```bash
+sudo apt update && sudo apt install python3 python3-pip
+```
+
+➡️ **Linux (RedHat/Fedora):**  
+```bash
+sudo dnf install python3
+```
 
 ---
 
-**Q2. I don’t have Git installed. Where can I get it?**  
-➡️ Install Git from [https://git-scm.com/download/win](https://git-scm.com/download/win)  
-✅ This also installs **Git Bash**, a terminal that supports Linux-style commands (if you run the unhuddle from bash --> use linux commands also on a windows pc).
+### **Q2. I don’t have Git installed. Where can I get it?**
+
+➡️ **Windows:** Install from [git-scm.com/download/win](https://git-scm.com/download/win)  
+✅ This also installs **Git Bash**, a terminal that supports Linux-style commands.  
+💡 If you run **Unhuddle** from Git Bash, you can follow **Linux command syntax** even on Windows.
+
+➡️ **macOS:** Install Git via Homebrew:  
+```bash
+brew install git
+```
+
+➡️ **Linux (Debian/Ubuntu):**  
+```bash
+sudo apt update && sudo apt install git
+```
+
+➡️ **Linux (RedHat/Fedora):**  
+```bash
+sudo dnf install git
+```
+
+---
+
+**Q3. What do you mean with command line and why is there no graphical user interface?**  
+➡️ The command line (also called terminal or shell) is a text-based interface where you type commands to run software. It allows for automation, reproducibility, and batch processing — essential for scientific data workflows.
+
+✅ You can find your terminal here:
+
+Windows: Use Git Bash (installed with Git), or search for "Command Prompt" or "PowerShell" in the Start menu.
+
+macOS: Open the built-in Terminal app (via Spotlight or Applications > Utilities).
+
+Linux: Use your default Terminal app, often found via the system menu or with the shortcut Ctrl+Alt+T.
+
+We currently provide a command-line interface (CLI) because it's the most flexible, scalable, and automation-friendly format for researchers working with complex datasets. A graphical user interface (GUI) may follow in the future.
+
+---
+
+**Q4. I heard command line usage is powerful and dangerous for people that have no formal training in this?**  
+➡️ It's true that the command line is powerful — it's used by professionals to automate complex workflows and manage entire systems efficiently. But power doesn't mean danger if you're using trusted commands.  
+✅ The commands in our guides have been carefully written and reviewed to be completely safe. They will not modify or delete anything outside the working folder.  
+
+🧠 Curious or cautious? You can always paste any command into your favorite AI assistant or chatbot (like ChatGPT, Copilot, etc.) and ask:
+
+“Can you explain what this command does?”
+
+That way, you're always in control — and learning while using the tools safely.
 
 ---
 
