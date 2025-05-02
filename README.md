@@ -887,6 +887,33 @@ Requires Python 3.8 or higher
 
 ---
 
+**Q3. What do you mean with command line and why is there no graphical user interface?**  
+➡️ The command line (also called terminal or shell) is a text-based interface where you type commands to run software. It allows for automation, reproducibility, and batch processing — essential for scientific data workflows.
+
+✅ You can find your terminal here:
+
+Windows: Use Git Bash (installed with Git), or search for "Command Prompt" or "PowerShell" in the Start menu.
+
+macOS: Open the built-in Terminal app (via Spotlight or Applications > Utilities).
+
+Linux: Use your default Terminal app, often found via the system menu or with the shortcut Ctrl+Alt+T.
+
+We currently provide a command-line interface (CLI) because it's the most flexible, scalable, and automation-friendly format for researchers working with complex datasets. A graphical user interface (GUI) may follow in the future.
+
+---
+
+**Q4. I heard command line usage is powerful and dangerous for people that have no formal training in this?**  
+➡️ It's true that the command line is powerful — it's used by professionals to automate complex workflows and manage entire systems efficiently. But power doesn't mean danger if you're using trusted commands.  
+✅ The commands in our guides have been carefully written and reviewed to be completely safe. They will not modify or delete anything outside the working folder.  
+
+🧠 Curious or cautious? You can always paste any command into your favorite AI assistant or chatbot (like ChatGPT, Copilot, etc.) and ask:
+
+“Can you explain what this command does?”
+
+That way, you're always in control — and learning while using the tools safely.
+
+---
+
 ## 📊 Coming Soon
 UNHUDDLE will be installable via `pip install unhuddle`
 
