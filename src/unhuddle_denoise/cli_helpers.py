@@ -8,8 +8,10 @@ from concurrent.futures import ProcessPoolExecutor, as_completed
 import pandas as pd
 from tqdm import tqdm
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List, Dict
+from pathlib import Path
 import platform
+
 
 _LOGGING_INITIALIZED = False
 
@@ -573,102 +575,143 @@ def run_qc_pipeline(args, adata, dirs):
     print("🚀 Running QC filtering pipeline ...")
     run_qc_from_memory(args, adata, dirs)  # Correct in-memory call
 
+from pathlib import Path
+from typing import List, Dict, Optional
+import logging
+
+from unhuddle_denoise.normalization import (
+    _per_cell_normalize,
+    compute_adaptive_marker_stats_from_cohort,
+    apply_cohort_scaling,
+)
 
 
 def run_cohort_normalization_adaptive(
-    fov_folders: list[str],
-    sum_dirs: dict,
-    dirs: dict,
-    markers: list[str],
-    sensor_markers: list[str],
+    fov_folders: List[str],
+    sum_dirs: Dict[str, str],
+    dirs: Dict[str, str],
+    markers: List[str],
+    sensor_markers: Optional[List[str]] = None,
     sample_max_cells: int = 100_000,
     min_range: float = 1e-3,
     cv_thresh: float = 0.1,
     cv_frac_thresh: float = 0.10,
-):
+) -> None:
     """
-    Perform adaptive, cohort-aware normalization with unified scaling strategy per marker.
-    Applies the same scaling strategy (binary/robust) per marker across all FOVs.
+    Perform adaptive, cohort-aware normalization with a unified scaling strategy per marker.
 
-    Outputs:
-        - Normalized intensity matrices to branch folder
-        - Marker-wise QC stats (scaling strategy, CV, sparsity) to QC_normstats
+    1) Read each FOV CSV, extract Label + marker columns
+    2) Per-cell normalize by sensor_markers (or all markers if None)
+    3) Compute cohort-wide stats (percentiles, CV, fallbacks)
+    4) Apply the same per-marker scaling to each FOV
+    5) Write out normalized CSVs + a QC stats CSV per branch
     """
-    import os
-    import glob
-    import logging
-    import pandas as pd
-    from unhuddle_denoise.normalization import (
-        _per_cell_normalize,
-        compute_adaptive_marker_stats_from_cohort,
-        apply_cohort_scaling
-    )
-
     logger = logging.getLogger(__name__)
 
+    # ---- validate sensor_markers ----
+    if sensor_markers is None:
+        sensor_markers = markers.copy()
+    else:
+        missing = set(sensor_markers) - set(markers)
+        if missing:
+            logger.warning(
+                "⚠️ The following sensor_markers are not in your marker list and will be ignored: %s",
+                sorted(missing),
+            )
+            sensor_markers = [m for m in sensor_markers if m in markers]
+
+    # ---- define your three branches ----
     branch_to_outdir = {
         "original": dirs.get("original_norm"),
-        "corrected": dirs.get("unhuddle_norm"),
+        "unhuddle": dirs.get("unhuddle_norm"),
         "denoised": dirs.get("unhuddle_denoised_norm"),
     }
 
-    for key in ['original', 'corrected', 'denoised']:
-        src_dir = sum_dirs.get(key)
-        out_dir = branch_to_outdir.get(key)
-
-        if not src_dir or not os.path.isdir(src_dir):
-            logger.warning(f"⚠️ Skipping missing normalization input folder for branch: {key}")
+    # ---- process each branch ----
+    for branch, out_dir in branch_to_outdir.items():
+        in_dir = sum_dirs.get(branch)
+        if not in_dir or not Path(in_dir).is_dir():
+            logger.warning(f"⚠️ Skipping branch '{branch}': input folder missing or invalid: {in_dir}")
             continue
         if not out_dir:
-            logger.warning(f"⚠️ Skipping branch {key} — no output directory set in dirs.")
+            logger.warning(f"⚠️ Skipping branch '{branch}': output directory not set")
             continue
 
-        fov_paths = sorted(glob.glob(os.path.join(src_dir, '*.csv')))
-        norms = []
-        labels = []
-        fovs = []
+        in_path = Path(in_dir)
+        out_path = Path(out_dir)
+        out_path.mkdir(parents=True, exist_ok=True)
 
-        for fn in fov_paths:
-            fov = os.path.basename(fn).replace('.csv', '')
-            df = pd.read_csv(fn)
-            if "Label" not in df.columns:
-                logger.warning(f"⚠️ Skipping {fov} (missing Label column)")
+        fov_files = sorted(in_path.glob("*.csv"))
+        if not fov_files:
+            logger.warning(f"⚠️ No CSVs found in {in_dir} for branch '{branch}'")
+            continue
+        logger.info(f"🔄 Branch '{branch}': {len(fov_files)} FOVs to normalize")
+
+        norms: List[np.ndarray]     = []
+        labels: List[pd.Series]     = []
+        fov_ids: List[str]          = []
+
+        # — stage 1: read & per-cell normalize —
+        for csv_file in fov_files:
+            try:
+                df = pd.read_csv(csv_file, usecols=["Label", *markers])
+            except Exception as e:
+                logger.error(f"Failed to read '{csv_file.name}': {e}")
                 continue
+
+            if "Label" not in df:
+                continue
+
             mat = df[markers].values
-            norm_mat, _ = _per_cell_normalize(mat, markers, sensor_markers)
+            try:
+                norm_mat, _ = _per_cell_normalize(mat, markers, sensor_markers)
+            except Exception as e:
+                logger.error(f"Per-cell normalization failed for '{csv_file.stem}': {e}")
+                continue
+
             norms.append(norm_mat)
-            labels.append(df["Label"].values)
-            fovs.append(fov)
+            labels.append(df["Label"])
+            fov_ids.append(csv_file.stem)
 
         if not norms:
-            logger.warning(f"⚠️ No valid FOVs found for {key}")
+            logger.warning(f"⚠️ No valid FOVs after per-cell normalization for branch '{branch}'")
             continue
 
-        # Cohort-aware strategy
+        # — stage 2: cohort stats —
+        logger.info(f"📊 Computing cohort stats for branch '{branch}'")
         marker_stats = compute_adaptive_marker_stats_from_cohort(
             norms,
             var_names=markers,
             sample_max_cells=sample_max_cells,
             min_range=min_range,
             cv_thresh=cv_thresh,
-            cv_frac_thresh=cv_frac_thresh
+            cv_frac_thresh=cv_frac_thresh,
         )
 
-        # Save global marker stats once per branch
-        qc_stats_dir = dirs.get("QC_normstats", os.path.join(out_dir, "..", "QC_normstats"))
-        os.makedirs(qc_stats_dir, exist_ok=True)
-        cohort_stats_fn = os.path.join(qc_stats_dir, f"{key}_cohort_marker_qc.csv")
-        marker_stats.to_csv(cohort_stats_fn, index=False)
-        logger.info(f"📊 Saved cohort-level marker scaling stats: {cohort_stats_fn}")
+        # — stage 3: apply cohort scaling per FOV —
+        logger.info(f"🎚️ Applying cohort scaling for branch '{branch}'")
+        for fov, norm_mat, lbl in zip(fov_ids, norms, labels):
+            try:
+                scaled = apply_cohort_scaling(norm_mat, markers, marker_stats)
+            except Exception as e:
+                logger.error(f"Scaling failed for '{fov}': {e}")
+                continue
 
-        # Apply and save normalized matrices
-        os.makedirs(out_dir, exist_ok=True)
-        for fov, norm_mat, lbl in zip(fovs, norms, labels):
-            scaled = apply_cohort_scaling(norm_mat, markers, marker_stats)
             out_df = pd.DataFrame(scaled, columns=markers)
-            out_df.insert(0, "Label", lbl)
+            out_df.insert(0, "Label", lbl.values)
+            out_file = out_path / f"{fov}.csv"
+            out_df.to_csv(out_file, index=False)
+            logger.debug(f"✅ Wrote normalized '{out_file}'")
 
-            out_path = os.path.join(out_dir, f"{fov}.csv")
-            out_df.to_csv(out_path, index=False)
-            logger.info(f"✅ Saved cohort-normalized FOV: {out_path}")
+        # — stage 4: save QC stats (including any fallback updates) —
+        qc_root = Path(dirs.get("QC_normstats", out_path.parent / "QC_normstats"))
+        qc_root.mkdir(parents=True, exist_ok=True)
+        stats_file = qc_root / f"{branch}_cohort_marker_qc.csv"
+        marker_stats.to_csv(stats_file, index=False)
+        logger.info(f"📈 Saved QC stats to '{stats_file}'")
+
+
+
+
+
 

@@ -128,12 +128,12 @@ def main():
         )
         logger.info(f"✅ Denoised reallocation factors saved to: {denoised_summary_path}")
 
-    # Stage 2b: Reallocation + Normalization
+    # Stage 2b: Reallocation
     results_stage2 = run_parallel_stage(
         fov_folders,
         func=partial(process_reallocation, dirs=dirs, args=args),
         max_workers=args.max_workers,
-        description="🔁 Reallocation + Normalization"
+        description="🔁 Reallocation"
     )
 
     successful = [os.path.basename(fov) for fov, res in results_stage2.items() if not result_failed(res)]
@@ -158,7 +158,7 @@ def main():
         fov_folders=fov_folders,
         sum_dirs={
             'original': dirs['original_sum'],
-            'corrected': dirs['unhuddle_sum'],
+            'unhuddle': dirs['unhuddle_sum'],
             'denoised': dirs.get('unhuddle_denoised_sum')
         },
         dirs=dirs,

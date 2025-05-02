@@ -399,110 +399,135 @@ def plot_intensity_distribution(adata, dirs, low_intensity_threshold):
     plt.savefig(out_path, dpi=150)
     plt.close()
 
+def log_column_stats(matrix: np.ndarray, var_names: list, logger):
+    """
+    Logs basic stats per marker from a NumPy matrix: min, max, mean, std, and nonzero fraction.
+    """
+    n_cols = matrix.shape[1]
+    for i in range(n_cols):
+        col = matrix[:, i]
+        name = var_names[i]
+        nz_frac = np.count_nonzero(col) / len(col)
+        logger.debug(
+            f"[{name}] min={col.min():.3g}, max={col.max():.3g}, mean={col.mean():.3g}, "
+            f"std={col.std():.3g}, nonzero_frac={nz_frac:.2%}"
+        )
 
+
+from pathlib import Path
+from typing import Optional, Sequence
+import numpy as np
+import matplotlib.pyplot as plt
+import logging
+
+logger = logging.getLogger(__name__)
 
 def qc_plot_normalization_comparison_from_X_png(
     adata,
-    dirs,
-    raw_layer="sum_unhuddle_denoised",
-    area_key="Area",
-    marker_subset=None
-):
+    dirs: dict,
+    raw_layer: str = "sum_unhuddle_denoised",
+    area_key: str = "Area",
+    marker_subset: Optional[Sequence[str]] = None,
+    point_size: float = 1.0,
+    alpha: float = 0.3,
+    summary_dpi: int = 200,
+    per_marker_dpi: int = 150
+) -> str:
     """
-    Creates PNG plots of normalization comparison: Raw, Raw/Area, Scaled from adata.X.
-    Saves individual marker plots and one summary plot to QC_plot subdir of dirs.
+    1) Summary: scatter of (Area vs Raw), (Area vs Raw/Area), (Area vs Scaled)
+    2) Per‐marker grid: same 3‐panel layout for each marker.
+    X‐axes are aligned; each Y‐axis is free to autoscale.
     """
-    import os
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from io import BytesIO
-    from PIL import Image
-    import logging
+    # prepare output folder
+    out_dir = Path(dirs.get("QC_plot", Path(dirs["QC"]) / "normalisation_plots"))
+    out_dir.mkdir(parents=True, exist_ok=True)
 
-    logger = logging.getLogger(__name__)
-
-    out_dir = dirs.get("QC_plot", os.path.join(dirs["QC"], "normalisation_plots"))
-    os.makedirs(out_dir, exist_ok=True)
-
+    # pick raw layer or fallback
     if raw_layer not in adata.layers:
-        fallback = "sum_unhuddle"
-        if fallback in adata.layers:
-            raw_layer = fallback
-            logger.info(f"Using '{raw_layer}' for plotting QC")
+        fb = "sum_unhuddle"
+        if fb in adata.layers:
+            raw_layer = fb
+            logger.info(f"Using fallback raw_layer='{fb}'")
         else:
-            logger.warning(f"❌ Neither '{raw_layer}' nor fallback '{fallback}' found in adata.layers. Skipping QC plot.")
-            return "⚠️ Skipped normalization QC: raw_layer not present."
+            msg = f"Skipped QC: neither '{raw_layer}' nor fallback found."
+            logger.warning(msg)
+            return f"⚠️ {msg}"
 
-    raw_mat = adata.layers[raw_layer]
+    raw_mat    = adata.layers[raw_layer]
     scaled_mat = adata.X
-    area = adata.obs[area_key].values
+    area       = adata.obs[area_key].values
+    log_column_stats(adata.X, adata.var_names, logger)
 
-    if marker_subset is None:
-        marker_subset = adata.var_names.tolist()
+    # choose markers
+    all_markers = list(adata.var_names)
+    if marker_subset:
+        markers = [m for m in all_markers if m in marker_subset]
+    else:
+        markers = all_markers
 
-    marker_idx = [i for i, name in enumerate(adata.var_names) if name in marker_subset]
-    area_safe = np.where(area == 0, np.nan, area)
+    if not markers:
+        msg = "No markers to plot."
+        logger.warning(msg)
+        return f"⚠️ {msg}"
 
-    # Combined plot
-    raw_all = raw_mat[:, marker_idx].flatten()
-    raw_area_norm_all = (raw_mat[:, marker_idx] / area_safe[:, None]).flatten()
-    scaled_all = scaled_mat[:, marker_idx].flatten()
-    area_all = np.repeat(area, len(marker_idx))
+    idx = [all_markers.index(m) for m in markers]
+    # mask zeros so divisions yield nan
+    area_mask = np.ma.masked_equal(area, 0)
 
-    fig, axs = plt.subplots(1, 3, figsize=(14, 4))
-    axs[0].scatter(area_all, raw_all, s=1, alpha=0.2)
-    axs[0].set_title("All markers - Raw")
-    axs[1].scatter(area_all, raw_area_norm_all, s=1, alpha=0.2)
-    axs[1].set_title("All markers - Raw / Area")
-    axs[2].scatter(area_all, scaled_all, s=1, alpha=0.2)
-    axs[2].set_title("All markers - Scaled")
-    for ax in axs:
-        ax.set_xlabel("Area")
+    # compute data for summary
+    raw_sel      = raw_mat[:, idx]                # (n_cells, n_sel)
+    raw_area_sel = raw_sel / area_mask[:, None]
+    scaled_sel   = scaled_mat[:, idx]
+    n_sel        = raw_sel.shape[1]
+    area_rep     = np.repeat(area_mask, n_sel)    # length = n_cells * n_sel
+
+    # 1) Summary figure
+    fig, axs = plt.subplots(1, 3, figsize=(15, 5), sharex=True, sharey=False)
+    # Raw
+    axs[0].scatter(area_rep, raw_sel.flatten(), s=point_size, alpha=alpha)
+    axs[0].set_title("All markers — Raw")
+    axs[0].set_xlabel("Area")
     axs[0].set_ylabel("Intensity")
+    # Raw / Area
+    axs[1].scatter(area_rep, raw_area_sel.flatten(), s=point_size, alpha=alpha)
+    axs[1].set_title("All markers — Raw / Area")
+    axs[1].set_xlabel("Area")
+    # Scaled
+    axs[2].scatter(area_rep, scaled_sel.flatten(), s=point_size, alpha=alpha)
+    axs[2].set_title("All markers — Scaled")
+    axs[2].set_xlabel("Area")
+
     fig.suptitle("Normalization Summary (All Markers)")
-    plt.tight_layout()
-    plt.savefig(os.path.join(out_dir, "norm_comparison_summary.png"), dpi=200)
-    plt.close()
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(out_dir / "norm_comparison_summary.png", dpi=summary_dpi)
+    plt.close(fig)
 
-    # Create individual per-marker plots as PIL images
-    marker_images = []
-    for j in marker_idx:
-        name = adata.var_names[j]
-        raw = raw_mat[:, j]
-        raw_area_norm = raw / area_safe
-        scaled = scaled_mat[:, j]
+    # 2) Per‐marker storyboard grid
+    rows = len(markers)
+    cols = 3
+    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 3 * rows), sharex="row", sharey=False)
+    # ensure axes is 2D
+    if rows == 1:
+        axes = np.expand_dims(axes, 0)
 
-        fig, axs = plt.subplots(1, 3, figsize=(14, 4))
-        axs[0].scatter(area, raw, s=2, alpha=0.3)
-        axs[0].set_title("Raw")
-        axs[1].scatter(area, raw_area_norm, s=2, alpha=0.3)
-        axs[1].set_title("Raw / Area")
-        axs[2].scatter(area, scaled, s=2, alpha=0.3)
-        axs[2].set_title("Scaled")
+    for i, m in enumerate(markers):
+        for j, mat in enumerate((raw_sel, raw_area_sel, scaled_sel)):
+            ax = axes[i, j]
+            col_vals = mat[:, i]
+            ax.scatter(area_mask, col_vals, s=point_size * 1.5, alpha=alpha)
+            if i == 0:
+                title = ("Raw", "Raw / Area", "Scaled")[j]
+                ax.set_title(title)
+            if j == 0:
+                ax.set_ylabel(m)
+            if i == rows - 1:
+                ax.set_xlabel("Area")
 
-        for ax in axs:
-            ax.set_xlabel("Area")
-        axs[0].set_ylabel(name)
+    fig.tight_layout()
+    fig.savefig(out_dir / "normalization_per_marker.png", dpi=per_marker_dpi)
+    plt.close(fig)
 
-        plt.tight_layout()
-        buf = BytesIO()
-        plt.savefig(buf, format="png", dpi=150)
-        plt.close(fig)
-        buf.seek(0)
-        img = Image.open(buf).convert("RGB")
-        marker_images.append(img)
-
-    # Create storyboard image (1 row per marker, 3 panels wide)
-    if marker_images:
-        w, h = marker_images[0].size
-        storyboard = Image.new("RGB", (w, h * len(marker_images)), (255, 255, 255))
-        for i, img in enumerate(marker_images):
-            storyboard.paste(img, (0, i * h))
-
-        storyboard_path = os.path.join(out_dir, "normalization_per_marker.png")
-        storyboard.save(storyboard_path)
-        logger.info(f"🖼️ Per marker storyboard saved to: {storyboard_path}")
-
+    logger.info(f"✅ QC PNGs saved to {out_dir}")
     return f"✅ PNG normalization plots saved to {out_dir}"
 
 
