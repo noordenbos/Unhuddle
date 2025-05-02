@@ -594,7 +594,6 @@ def run_cohort_normalization_adaptive(
     sensor_markers: Optional[List[str]] = None,
     sample_max_cells: int = 100_000,
     min_range: float = 1e-3,
-    cv_thresh: float = 0.1,
     cv_frac_thresh: float = 0.10,
 ) -> None:
     """
@@ -684,7 +683,6 @@ def run_cohort_normalization_adaptive(
             var_names=markers,
             sample_max_cells=sample_max_cells,
             min_range=min_range,
-            cv_thresh=cv_thresh,
             cv_frac_thresh=cv_frac_thresh,
         )
 

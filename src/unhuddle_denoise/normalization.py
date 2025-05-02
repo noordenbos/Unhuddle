@@ -127,7 +127,7 @@ def apply_cohort_scaling(
             continue
 
         # 2) Binary scaling
-        if method == "binary_by_cv_or_frac":
+        if method in {"binary_by_cv_or_frac", "binary_by_frac"}:
             scaled[:, j] = (col > 0).astype(float)
             continue
 
