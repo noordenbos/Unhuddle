@@ -97,12 +97,12 @@ Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2
 
 #### 🐧 Linux / macOS / WSL (make sure you are still in the unhuddle base directory!)
 ```bash
-rm -rf demodata-raw && mkdir -p demodata-raw && curl -s https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata-raw/$fov && wget --show-progress -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata-raw/$fov --strip-components=1 && rm ${fov}.tar.gz; done
+rm -rf demodata-raw && mkdir -p demodata-raw && curl -s https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata-raw/$fov && curl -L "$url" -o ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata-raw/$fov --strip-components=1 && rm ${fov}.tar.gz; done
 ```
 
 #### 🪟 Windows (PowerShell) (make sure you are still in the unhuddle base directory!)
 ```powershell
-Remove-Item -Recurse -Force demodata-raw -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force -Path "demodata-raw" | Out-Null; Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | % { $_.assets } | ? { $_.name -like "*.zip" } | % { $fov = $_.name -replace ".zip",""; New-Item -ItemType Directory -Force -Path "demodata-raw\$fov" | Out-Null; Invoke-WebRequest -Uri $_.browser_download_url -OutFile "$fov.zip"; Expand-Archive -Path "$fov.zip" -DestinationPath "demodata-raw\$fov" -Force; Remove-Item "$fov.zip" -Force }
+Remove-Item -Recurse -Force demodata-raw -ErrorAction Ignore; New-Item -ItemType Directory -Path "demodata-raw" -Force | Out-Null; (Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest).assets | Where-Object { $_.name -like "*.tar.gz" } | ForEach-Object { $url = $_.browser_download_url; $fov = [IO.Path]::GetFileNameWithoutExtension($_.name); Invoke-WebRequest -Uri $url -OutFile "$fov.tar.gz"; New-Item -ItemType Directory -Path "demodata-raw\$fov" -Force | Out-Null; tar -xzf "$fov.tar.gz" -C "demodata-raw\$fov" --strip-components=1; Remove-Item "$fov.tar.gz" }
 ```
 
 </details>
@@ -409,12 +409,12 @@ The following commands will automatically download and unpack all available demo
 
 #### 🐧 Linux / macOS / WSL
 ```bash
-[ -d demodata ] && [ -f README.md ] && echo "Cleaning demodata..." && \rm -rf demodata && mkdir -p demodata && curl -s https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata/$fov; wget --show-progress -q "$url" -O ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata/$fov --strip-components=1 && rm ${fov}.tar.gz; done
+[ -d demodata ] && [ -f README.md ] && echo "Cleaning demodata..." && \rm -rf demodata; mkdir -p demodata; curl -s https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata/$fov; curl -L "$url" -o ${fov}.tar.gz; tar -xzf ${fov}.tar.gz -C demodata/$fov --strip-components=1; rm ${fov}.tar.gz; done
 ```
 
 #### 🪟 Windows (PowerShell)
 ```powershell
-Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest | % { $_.assets } | ? { $_.name -like "*.zip" } | % { $fov = $_.name -replace ".zip",""; if (Test-Path "demodata\$fov") { Remove-Item "demodata\$fov\*" -Recurse -Force } else { New-Item -ItemType Directory -Force -Path "demodata\$fov" | Out-Null }; Invoke-WebRequest -Uri $_.browser_download_url -OutFile "$fov.zip"; Expand-Archive -Path "$fov.zip" -DestinationPath "demodata\$fov" -Force; Remove-Item "$fov.zip" -Force }
+if (Test-Path "demodata" -and Test-Path "README.md") { Write-Host "Cleaning demodata..."; Remove-Item -Recurse -Force demodata }; New-Item -ItemType Directory -Path "demodata" -Force | Out-Null; (Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest).assets | Where-Object { $_.name -like "*.tar.gz" } | ForEach-Object { $url = $_.browser_download_url; $fov = [IO.Path]::GetFileNameWithoutExtension($_.name); Invoke-WebRequest -Uri $url -OutFile "$fov.tar.gz"; New-Item -ItemType Directory -Path "demodata\$fov" -Force | Out-Null; tar -xzf "$fov.tar.gz" -C "demodata\$fov" --strip-components=1; Remove-Item "$fov.tar.gz" }
 ```
 
 📂 The extended demodate set contains 134k cells, which allows you to rerun the UNHUDDLE pipeline with the `--use_denoise` flag
@@ -872,6 +872,20 @@ This provides a simple per-unit-area normalization, which may be preferable in s
 ## 📎 Notes
 ✅ Python Compatibility:
 Requires Python 3.8 or higher
+
+## ❓ FAQ for New Users
+
+**Q1. I don’t have Python installed. What should I do?**  
+➡️ Download the latest Python from the official site: [https://www.python.org/downloads/windows/](https://www.python.org/downloads/windows/)  
+✅ During installation, make sure to **check the box “Add Python to PATH.”**
+
+---
+
+**Q2. I don’t have Git installed. Where can I get it?**  
+➡️ Install Git from [https://git-scm.com/download/win](https://git-scm.com/download/win)  
+✅ This also installs **Git Bash**, a terminal that supports Linux-style commands (if you run the unhuddle from bash --> use linux commands also on a windows pc).
+
+---
 
 ## 📊 Coming Soon
 UNHUDDLE will be installable via `pip install unhuddle`
