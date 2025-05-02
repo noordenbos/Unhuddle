@@ -594,7 +594,7 @@ def run_cohort_normalization_adaptive(
     sensor_markers: Optional[List[str]] = None,
     sample_max_cells: int = 100_000,
     min_range: float = 1e-3,
-    cv_frac_thresh: float = 0.10,
+    cv_frac_thresh: float = 0.05,
 ) -> None:
     """
     Perform adaptive, cohort-aware normalization with a unified scaling strategy per marker.
