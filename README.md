@@ -875,15 +875,50 @@ Requires Python 3.8 or higher
 
 ## ❓ FAQ for New Users
 
-**Q1. I don’t have Python installed. What should I do?**  
-➡️ Download the latest Python from the official site: [https://www.python.org/downloads/windows/](https://www.python.org/downloads/windows/)  
-✅ During installation, make sure to **check the box “Add Python to PATH.”**
+---
+
+### **Q1. I don’t have Python installed. What should I do?**
+
+➡️ **Windows:** Download from [python.org/downloads/windows](https://www.python.org/downloads/windows/)  
+✅ During installation, **check the box “Add Python to PATH.”**
+
+➡️ **macOS:** Python 3 is often pre-installed, but it's recommended to install via [Homebrew](https://brew.sh/):  
+```bash
+brew install python
+```
+
+➡️ **Linux (Debian/Ubuntu):**  
+```bash
+sudo apt update && sudo apt install python3 python3-pip
+```
+
+➡️ **Linux (RedHat/Fedora):**  
+```bash
+sudo dnf install python3
+```
 
 ---
 
-**Q2. I don’t have Git installed. Where can I get it?**  
-➡️ Install Git from [https://git-scm.com/download/win](https://git-scm.com/download/win)  
-✅ This also installs **Git Bash**, a terminal that supports Linux-style commands (if you run the unhuddle from bash --> use linux commands also on a windows pc).
+### **Q2. I don’t have Git installed. Where can I get it?**
+
+➡️ **Windows:** Install from [git-scm.com/download/win](https://git-scm.com/download/win)  
+✅ This also installs **Git Bash**, a terminal that supports Linux-style commands.  
+💡 If you run **Unhuddle** from Git Bash, you can follow **Linux command syntax** even on Windows.
+
+➡️ **macOS:** Install Git via Homebrew:  
+```bash
+brew install git
+```
+
+➡️ **Linux (Debian/Ubuntu):**  
+```bash
+sudo apt update && sudo apt install git
+```
+
+➡️ **Linux (RedHat/Fedora):**  
+```bash
+sudo dnf install git
+```
 
 ---
 
