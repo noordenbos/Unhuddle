@@ -76,6 +76,13 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+import numpy as np
+import logging
+from typing import List
+import pandas as pd
+
+logger = logging.getLogger(__name__)
+
 def apply_cohort_scaling(
     norm_matrix: np.ndarray,
     var_names: List[str],
@@ -85,20 +92,18 @@ def apply_cohort_scaling(
 ) -> np.ndarray:
     """
     Scale each column of `norm_matrix` to [0,1] per the cohort stats in `stats_df`.
-    Supports 'binary_by_cv_or_frac', 'robust', and all 'fallback_*' methods.
+    Supports 'binary_by_cv_or_frac', 'robust', and any 'fallback_*' methods.
     If >zero_frac_thresh of cells collapse to zero under robust scaling, optionally
     fallback to log1p and update `stats_df` accordingly.
     """
     n_cells, n_markers = norm_matrix.shape
     scaled = np.zeros_like(norm_matrix)
 
-    # Map marker name → row index in stats_df
+    # Build a name → row-index map just once
     row_idx_map = {
         row.marker: idx
         for idx, row in stats_df.reset_index(drop=True).iterrows()
     }
-
-    valid_methods = ("robust", "fallback_minmax", "fallback_log1p", "fallback_sqrt")
 
     for j, marker in enumerate(var_names):
         if marker not in row_idx_map:
@@ -107,14 +112,13 @@ def apply_cohort_scaling(
 
         row_idx = row_idx_map[marker]
         meta    = stats_df.iloc[row_idx]
-        method  = meta.marker_method
+        method  = str(meta.marker_method)
         p1, p99 = float(meta.p1), float(meta.p99)
         col     = norm_matrix[:, j]
 
-        # All-zero column
+        # 1) All-zero column
         nonzero_mask = col != 0
-        nonzero_vals = col[nonzero_mask]
-        if nonzero_vals.size == 0:
+        if not nonzero_mask.any():
             logger.warning(f"[{marker}] All-zero column — filling with 0s")
             stats_df.at[row_idx, "marker_method"] = "all_zero"
             stats_df.at[row_idx, "p1"]            = 0.0
@@ -122,20 +126,20 @@ def apply_cohort_scaling(
             stats_df.at[row_idx, "fallback"]      = "all_zero"
             continue
 
-        # Binary scaling
+        # 2) Binary scaling
         if method == "binary_by_cv_or_frac":
             scaled[:, j] = (col > 0).astype(float)
             continue
 
-        # Robust or any fallback_* method with valid range
-        if any(method.startswith(m) for m in valid_methods) and (p99 > p1):
-            # base scaling
+        # 3) Robust or any fallback_* method
+        if (method == "robust" or method.startswith("fallback")) and (p99 > p1):
+            # base scaling with cohort p1/p99
             denom = p99 - p1
             sc = (col - p1) / denom
             sc = np.clip(sc, 0.0, 1.0)
             sc[col == 0] = 0.0
 
-            # optional log1p fallback, only for original 'robust'
+            # 3a) optional log1p fallback for original 'robust' only
             if method == "robust" and log_fallback_enabled:
                 zero_frac = float((sc < 1e-5).mean())
                 if zero_frac > zero_frac_thresh:
@@ -155,18 +159,19 @@ def apply_cohort_scaling(
                             logger.info(
                                 f"[{marker}] log1p fallback applied (zero_frac={zero_frac:.2f})"
                             )
-            # assign scaled result
+            # assign the scaled array
             scaled[:, j] = sc
             continue
 
-        # Anything else → zero
-        logger.warning(f"[{marker}] Unknown or invalid method '{method}'; setting column to 0s")
+        # 4) Anything else → zeros (unhandled method)
+        logger.warning(f"[{marker}] Unrecognized method '{method}'; setting column to 0s")
         stats_df.at[row_idx, "marker_method"] = "unhandled"
         stats_df.at[row_idx, "p1"]            = 0.0
         stats_df.at[row_idx, "p99"]           = 0.0
         stats_df.at[row_idx, "fallback"]      = "none"
 
     return scaled
+
 
 
 
