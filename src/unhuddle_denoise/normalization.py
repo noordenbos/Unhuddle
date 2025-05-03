@@ -119,16 +119,19 @@ def apply_cohort_scaling(
         # 1) All-zero column
         nonzero_mask = col != 0
         if not nonzero_mask.any():
-            logger.warning(f"[{marker}] All-zero column — filling with 0s")
+            logger.info(f"[{marker}] All-zero column — filling with 0s")
             stats_df.at[row_idx, "marker_method"] = "all_zero"
             stats_df.at[row_idx, "p1"]            = 0.0
             stats_df.at[row_idx, "p99"]           = 0.0
             stats_df.at[row_idx, "fallback"]      = "all_zero"
             continue
 
-        # 2) Binary scaling
+        # 2) Binary scaling and all zero
         if method in {"binary_by_cv_or_frac", "binary_by_frac"}:
             scaled[:, j] = (col > 0).astype(float)
+            continue
+        elif method == "all_zero":
+            scaled[:, j] = 0.0
             continue
 
         # 3) Robust or any fallback_* method
@@ -165,10 +168,7 @@ def apply_cohort_scaling(
 
         # 4) Anything else → zeros (unhandled method)
         logger.warning(f"[{marker}] Unrecognized method '{method}'; setting column to 0s")
-        stats_df.at[row_idx, "marker_method"] = "unhandled"
-        stats_df.at[row_idx, "p1"]            = 0.0
-        stats_df.at[row_idx, "p99"]           = 0.0
-        stats_df.at[row_idx, "fallback"]      = "none"
+        scaled[:, j] = 0.0
 
     return scaled
 

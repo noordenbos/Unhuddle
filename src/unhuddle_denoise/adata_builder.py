@@ -32,7 +32,7 @@ def log_column_stats(X: pd.DataFrame, fov: str):
         )
 
 def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: str = "adata1.h5ad", max_workers: int = 16):
-    """Reconciles processed FOV outputs into a single AnnData object."""
+    """Reconciles processed FOV outputs into a single AnnData object with robust marker alignment."""
 
     adata_dir = Path(dirs["adata"])
     if not adata_dir.is_dir():
@@ -55,6 +55,12 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
     denoised_fovs = []
     fov_count = 0
 
+    # Step 1: Explicitly define global marker list from reference CSV
+    reference_csv = next(Path(dirs["unhuddle_norm"]).glob("*.csv"))
+    reference_df = pd.read_csv(reference_csv)
+    markers = [col for col in reference_df.columns if col != "Label"]
+    logger.info(f"✅ Using reference markers from {reference_csv.name}: {markers}")
+
     for fov in tqdm(fovs, desc="Constructing AnnData"):
         p = lambda k: Path(dirs[k]) / f"{fov}.csv" if dirs.get(k) else None
         paths = {
@@ -68,6 +74,7 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
         }
 
         if not all(paths[k] and paths[k].is_file() for k in ["intensity", "sum", "orig_sum", "morph"]):
+            logger.warning(f"⚠️ Skipping FOV '{fov}': missing required files.")
             continue
 
         intensity = convert_numeric(load_df(paths["intensity"], fov))
@@ -77,6 +84,22 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
         denoised_intensity = convert_numeric(load_df(paths["denoised_intensity"], fov)) if paths["denoised_intensity"] and paths["denoised_intensity"].is_file() else None
         denoised_sum = convert_numeric(load_df(paths["denoised_sum"], fov)) if paths["denoised_sum"] and paths["denoised_sum"].is_file() else None
         protein_df = convert_numeric(load_df(paths["protein"], fov)) if paths["protein"] and paths["protein"].is_file() else None
+
+        # Check for missing markers explicitly
+        missing_markers = set(markers) - set(intensity.columns)
+        if missing_markers:
+            logger.error(f"⚠️ Missing markers {missing_markers} in FOV '{fov}'; skipping this FOV.")
+            continue
+
+        # Explicitly reorder columns to match global marker list
+        intensity = intensity[markers]
+        sum_unhuddle = sum_unhuddle[markers]
+        sum_orig = sum_orig[markers]
+
+        if denoised_intensity is not None:
+            denoised_intensity = denoised_intensity[markers]
+        if denoised_sum is not None:
+            denoised_sum = denoised_sum[markers]
 
         if all(col in morph.columns for col in ["Nucleus_Area", "Nucleus_Centroid_Row"]):
             morph["QC_no_nucleus"] = morph[["Nucleus_Area", "Nucleus_Centroid_Row"]].isna().any(axis=1)
@@ -91,13 +114,13 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
         all_obs.append(morph)
 
         if denoised_intensity is not None and denoised_sum is not None:
-            X = denoised_intensity.drop(columns=["Label"], errors="ignore")
-            all_layers["sum_unhuddle_denoised"].append(denoised_sum.drop(columns=["Label"], errors="ignore").values)
+            X = denoised_intensity
+            all_layers["sum_unhuddle_denoised"].append(denoised_sum.values)
             denoised_fovs.append(fov)
             logger.debug(f"✅ Using denoised intensity data for FOV: {fov}")
             x_src = "normalized_unhuddle_denoised"
         else:
-            X = intensity.drop(columns=["Label"], errors="ignore")
+            X = intensity
             logger.debug(f"⚠️ Denoised data missing for FOV: {fov}, falling back to regular normalized intensity")
             x_src = "normalized_unhuddle"
 
@@ -107,54 +130,50 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
         fov_count += 1
         logger.debug(f"📦 [{fov}] → X shape: {X.shape}")
 
-        all_layers["sum_unhuddle"].append(sum_unhuddle.drop(columns=["Label"], errors="ignore").values)
-        all_layers["sum_original"].append(sum_orig.drop(columns=["Label"], errors="ignore").values)
+        all_layers["sum_unhuddle"].append(sum_unhuddle.values)
+        all_layers["sum_original"].append(sum_orig.values)
 
         if protein_df is not None:
             exclmem_cols = [col for col in protein_df.columns if col.endswith("_ExclusionMembrane_Sum_Intensity")]
             if exclmem_cols:
-                markers = [col.replace("_ExclusionMembrane_Sum_Intensity", "") for col in exclmem_cols]
-                all_layers["ExclMem_Sum"].append(protein_df[exclmem_cols].values)
-                var_names = markers
-                logger.info(f"✅ Reconstructed layer 'ExclMem_Sum' from protein_features for FOV: {fov}")
-            else:
-                logger.warning(f"⚠️ No ExclusionMembrane_Sum_Intensity columns found in protein_features for FOV: {fov}")
+                protein_markers = [col.replace("_ExclusionMembrane_Sum_Intensity", "") for col in exclmem_cols]
+                if set(protein_markers) == set(markers):
+                    # explicitly reorder protein_df columns to match global marker order
+                    ordered_exclmem_cols = [f"{m}_ExclusionMembrane_Sum_Intensity" for m in markers]
+                    all_layers["ExclMem_Sum"].append(protein_df[ordered_exclmem_cols].values)
+                    logger.info(f"✅ Reconstructed layer 'ExclMem_Sum' from protein_features for FOV: {fov}")
+                else:
+                    missing_in_protein = set(markers) - set(protein_markers)
+                    extra_in_protein = set(protein_markers) - set(markers)
+                    logger.warning(
+                        f"⚠️ Protein markers mismatch in FOV '{fov}': "
+                        f"missing in protein={missing_in_protein}, extra in protein={extra_in_protein}; "
+                        f"skipping ExclMem_Sum layer."
+                    )
 
     logger.debug(f"🧮 Final FOVs used: {fov_count}")
     logger.debug(f"🧪 Denoised FOVs used: {len(denoised_fovs)} → {denoised_fovs}")
 
-    n_obs = sum(x.shape[0] for x in all_X)
-    for key, arrs in all_layers.items():
-        if arrs:
-            shape_sum = sum(x.shape[0] for x in arrs)
-            logger.debug(f"📊 Layer '{key}': {shape_sum} rows across {len(arrs)} chunks")
-            if key == "sum_unhuddle_denoised":
-                assert shape_sum == n_obs, f"❌ Mismatch for layer '{key}': expected {n_obs}, got {shape_sum}"
-
-    var_names = X.columns.tolist() if hasattr(X, "columns") else [f"marker_{i}" for i in range(X.shape[1])]
-
     adata = AnnData(
         X=np.vstack(all_X),
         obs=pd.concat(all_obs),
-        var=pd.DataFrame(index=var_names),
+        var=pd.DataFrame(index=markers),
         obsm={"X_spatial": np.vstack(all_obsm_spatial)}
     )
+
     for key, arrays in all_layers.items():
         if arrays:
             adata.layers[key] = np.vstack(arrays)
+            logger.debug(f"📊 Layer '{key}' shape: {adata.layers[key].shape}")
 
     adata.obs["summed_intensity"] = adata.layers["sum_unhuddle"].sum(axis=1)
     adata.uns["X_source"] = x_src
     adata.uns["fov-list"] = sorted(adata.obs["fov"].unique().tolist())
     adata.uns["patient_id-list"] = sorted(adata.obs["patient_id"].unique().tolist())
-    adata.uns["marker-list"] = var_names
-
-    adata.uns["spatial"] = {}
-    for fov in fovs:
-        mask_path = Path(working_path) / fov / "deepcel_mask.tiff"
-        if mask_path.is_file():
-            adata.uns["spatial"][fov] = {"segmentation": imread(mask_path)}
+    adata.uns["marker-list"] = markers
 
     adata.write_h5ad(adata_output_path)
-    print(f"AnnData saved to: {adata_output_path}\n\n")
+    logger.info(f"✅ AnnData saved to: {adata_output_path}")
+
     return adata
+

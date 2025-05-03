@@ -123,7 +123,7 @@ def process_fov_reallocation_only(
     fov_path,
     protein_features,
     dirs,
-    markers_for_normalisation,
+    markers_for_normalization,
     use_denoised,
     log_level
 ):
@@ -167,7 +167,7 @@ def process_fov_reallocation_only(
                 protein_features=protein_features,
                 cell_mask=cell_mask,
                 membrane_mask=membrane_mask,
-                sensor_markers=markers_for_normalisation,
+                sensor_markers=markers_for_normalization,
                 dirs=dirs
             )
 

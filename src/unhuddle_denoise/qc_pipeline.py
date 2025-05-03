@@ -425,21 +425,24 @@ logger = logging.getLogger(__name__)
 def qc_plot_normalization_comparison_from_X_png(
     adata,
     dirs: dict,
+    args,
     raw_layer: str = "sum_unhuddle_denoised",
     area_key: str = "Area",
-    marker_subset: Optional[Sequence[str]] = None,
     point_size: float = 1.0,
     alpha: float = 0.3,
     summary_dpi: int = 200,
     per_marker_dpi: int = 150
 ) -> str:
     """
-    1) Summary: scatter of (Area vs Raw), (Area vs Raw/Area), (Area vs Scaled)
-    2) Per‐marker grid: same 3‐panel layout for each marker.
-    X‐axes are aligned; each Y‐axis is free to autoscale.
+    QC plots comparing normalization methods:
+    1) Summary: scatter of (Area vs Raw), (Area vs Raw/SensorSum), (Area vs Raw/Area), (Area vs Scaled)
+    2) Per-marker grid: same 4-panel layout for each marker.
+    X-axes are aligned (Area); each Y-axis is free to autoscale.
     """
+    adata = adata[adata.obs['QC_final_keep']].copy()
+
     # prepare output folder
-    out_dir = Path(dirs.get("QC_plot", Path(dirs["QC"]) / "normalisation_plots"))
+    out_dir = Path(dirs.get("QC_plot", Path(dirs["QC"]) / "normalization_plots"))
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # pick raw layer or fallback
@@ -453,70 +456,83 @@ def qc_plot_normalization_comparison_from_X_png(
             logger.warning(msg)
             return f"⚠️ {msg}"
 
-    raw_mat    = adata.layers[raw_layer]
+    raw_mat = adata.layers[raw_layer]
     scaled_mat = adata.X
-    area       = adata.obs[area_key].values
     log_column_stats(adata.X, adata.var_names, logger)
 
-    # choose markers
-    all_markers = list(adata.var_names)
-    if marker_subset:
-        markers = [m for m in all_markers if m in marker_subset]
-    else:
-        markers = all_markers
+    markers = list(adata.var_names)
+    idx = [markers.index(m) for m in markers]
 
-    if not markers:
-        msg = "No markers to plot."
+    # sensor markers from args
+    sensor_markers = args.normalization_markers
+    valid_sensor_markers = [m for m in sensor_markers if m in markers]
+
+    if not valid_sensor_markers:
+        logger.info(
+            "No valid sensor markers provided; falling back to sum of all markers for Raw/SensorSum panel.")
+        sensor_idx = list(range(len(markers)))  # use all markers
+    else:
+        sensor_idx = [markers.index(m) for m in valid_sensor_markers]
+
+    sensor_sum = np.sum(raw_mat[:, sensor_idx], axis=1)
+    sensor_sum_mask = np.ma.masked_equal(sensor_sum, 0)
+
+    # Area normalization
+    if area_key not in adata.obs:
+        msg = f"Area key '{area_key}' not found in adata.obs."
         logger.warning(msg)
         return f"⚠️ {msg}"
-
-    idx = [all_markers.index(m) for m in markers]
-    # mask zeros so divisions yield nan
+    area = adata.obs[area_key].values
     area_mask = np.ma.masked_equal(area, 0)
 
     # compute data for summary
-    raw_sel      = raw_mat[:, idx]                # (n_cells, n_sel)
-    raw_area_sel = raw_sel / area_mask[:, None]
-    scaled_sel   = scaled_mat[:, idx]
-    n_sel        = raw_sel.shape[1]
-    area_rep     = np.repeat(area_mask, n_sel)    # length = n_cells * n_sel
+    raw_sel = raw_mat[:, idx]  # (n_cells, n_markers)
+    raw_sensor_norm = raw_sel / sensor_sum_mask[:, None]  # Raw / SensorSum
+    raw_area_norm = raw_sel / area_mask[:, None]          # Raw / Area
+    scaled_sel = scaled_mat[:, idx]
+    n_markers = raw_sel.shape[1]
+    area_rep = np.repeat(area_mask, n_markers)  # length = n_cells * n_markers
 
-    # 1) Summary figure
-    fig, axs = plt.subplots(1, 3, figsize=(15, 5), sharex=True, sharey=False)
-    # Raw
+    # 1) Summary figure (4 panels)
+    scaled_panel_title = f"Scaled ({args.normalization}-normalization)"
+
+    fig, axs = plt.subplots(1, 4, figsize=(20, 5), sharex=True, sharey=False)
     axs[0].scatter(area_rep, raw_sel.flatten(), s=point_size, alpha=alpha)
     axs[0].set_title("All markers — Raw")
     axs[0].set_xlabel("Area")
     axs[0].set_ylabel("Intensity")
-    # Raw / Area
-    axs[1].scatter(area_rep, raw_area_sel.flatten(), s=point_size, alpha=alpha)
-    axs[1].set_title("All markers — Raw / Area")
+
+    axs[1].scatter(area_rep, raw_sensor_norm.flatten(), s=point_size, alpha=alpha)
+    axs[1].set_title("All markers — Raw / SensorSum")
     axs[1].set_xlabel("Area")
-    # Scaled
-    axs[2].scatter(area_rep, scaled_sel.flatten(), s=point_size, alpha=alpha)
-    axs[2].set_title("All markers — Scaled")
+
+    axs[2].scatter(area_rep, raw_area_norm.flatten(), s=point_size, alpha=alpha)
+    axs[2].set_title("All markers — Raw / Area")
     axs[2].set_xlabel("Area")
+
+    axs[3].scatter(area_rep, scaled_sel.flatten(), s=point_size, alpha=alpha)
+    axs[3].set_title(f"All markers — {scaled_panel_title}")
+    axs[3].set_xlabel("Area")
 
     fig.suptitle("Normalization Summary (All Markers)")
     fig.tight_layout(rect=[0, 0, 1, 0.95])
     fig.savefig(out_dir / "norm_comparison_summary.png", dpi=summary_dpi)
     plt.close(fig)
 
-    # 2) Per‐marker storyboard grid
+    # 2) Per-marker storyboard grid (4 panels per marker)
     rows = len(markers)
-    cols = 3
+    cols = 4
     fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 3 * rows), sharex="row", sharey=False)
-    # ensure axes is 2D
     if rows == 1:
         axes = np.expand_dims(axes, 0)
 
     for i, m in enumerate(markers):
-        for j, mat in enumerate((raw_sel, raw_area_sel, scaled_sel)):
+        for j, mat in enumerate((raw_sel, raw_sensor_norm, raw_area_norm, scaled_sel)):
             ax = axes[i, j]
             col_vals = mat[:, i]
             ax.scatter(area_mask, col_vals, s=point_size * 1.5, alpha=alpha)
             if i == 0:
-                title = ("Raw", "Raw / Area", "Scaled")[j]
+                title = ("Raw", "Raw / SensorSum", "Raw / Area", scaled_panel_title)[j]
                 ax.set_title(title)
             if j == 0:
                 ax.set_ylabel(m)
@@ -529,7 +545,6 @@ def qc_plot_normalization_comparison_from_X_png(
 
     logger.info(f"✅ QC PNGs saved to {out_dir}")
     return f"✅ PNG normalization plots saved to {out_dir}"
-
 
 def extend_dirs_with_qc(dirs):
     """
@@ -601,14 +616,6 @@ def run_qc_from_memory(args, adata, dirs):
     logger.info('📚 Storyboards')
     generate_storyboards(dirs, list(region_map))
 
-    # ── 6.5 Cohort-Level Normalization QC ─────────────────────────────────────────
-    logger.info('📊 Cohort-level normalization QC')
-    qc_plot_normalization_comparison_from_X_png(
-        adata=adata,
-        dirs=dirs,
-        marker_subset=None
-    )
-
     # ── 7. DR Plot ────────────────────────────────────────────────────────────────
     logger.info('📈 Filtering results in Dimension Reduction plot')
     generate_dr_plot(adata, dirs)
@@ -620,10 +627,19 @@ def run_qc_from_memory(args, adata, dirs):
     # ── 9. Final Keep Flag + Save ─────────────────────────────────────────────────
     logger.info('💾 Save flagged full AnnData (no cells removed)')
     keep = ~(adata.obs.get('QC_low_intensity_filter', False) | adata.obs.get('QC_filter_low_quality_region', False))
+    if 'QC_dr_based_filter' in adata.obs:
+        keep &= ~adata.obs['QC_dr_based_filter']
     adata.obs['QC_final_keep'] = keep.astype(bool)
-
     kept_count = int(keep.sum())
     logger.info(f'🔧 Final cells flagged: retained = {kept_count} / {adata.n_obs}')
+    # ── 10 Cohort-Level Normalization QC ─────────────────────────────────────────
+    logger.info('📊 Cohort-level normalization QC')
+    qc_plot_normalization_comparison_from_X_png(
+        adata=adata,
+        dirs=dirs,
+        args=args
+    )
+
 
     out_path = os.path.join(dirs['adata'], 'adata1.h5ad')
     os.makedirs(os.path.dirname(out_path), exist_ok=True)

@@ -49,8 +49,8 @@ def main():
         list_available_markers(args)
         return
 
-    if not args.normalisation_markers or not args.nuclear_markers:
-        raise ValueError("Both --normalisation_markers and --nuclear_markers are required unless --list_available_markers is used.")
+    if not args.normalization_markers or not args.nuclear_markers:
+        raise ValueError("Both --normalization_markers and --nuclear_markers are required unless --list_available_markers is used.")
 
     if args.create_deepcell_mask and not args.geckodriver_path:
         raise ValueError("--geckodriver_path is required when --create_deepcell_mask is used.")
@@ -60,7 +60,7 @@ def main():
     logger.info(f"Using nuclear_markers_overlay: {args.nuclear_markers_overlay}")
 
     if args.membrane_markers_overlay is None:
-        args.membrane_markers_overlay = args.normalisation_markers
+        args.membrane_markers_overlay = args.normalization_markers
     logger.info(f"Using membrane_markers_overlay: {args.membrane_markers_overlay}")
     if args.fitsne and args.add_dimensionreduction_coords:
         raise ValueError("Cannot use both --fitsne and --add_dimensionreduction_coords. Choose one.")
@@ -157,7 +157,7 @@ def main():
     )
 
     logger.debug(f"🧬 Markers selected for normalization: {protein_features}")
-    logger.debug(f"🧪 Sensor markers: {args.normalisation_markers}")
+    logger.debug(f"🧪 Sensor markers: {args.normalization_markers}")
 
     run_cohort_normalization_adaptive(
         fov_folders=fov_folders,
@@ -168,7 +168,8 @@ def main():
         },
         dirs=dirs,
         markers=protein_features,
-        sensor_markers=args.normalisation_markers
+        sensor_markers=args.normalization_markers,
+        normalization=args.normalization
     )
 
     # optional: run fitsne local (implementation complex, only advanced users)

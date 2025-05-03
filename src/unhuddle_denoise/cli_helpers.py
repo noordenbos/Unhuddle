@@ -121,7 +121,7 @@ def parse_arguments() -> argparse.Namespace:
         "--membrane_markers_overlay",
         nargs="+",
         default=None,
-        help="Markers to use for DeepCell overlay (green channel - membrane/cytoplasm). If not provided, defaults to --normalisation_markers."
+        help="Markers to use for DeepCell overlay (green channel - membrane/cytoplasm). If not provided, defaults to --normalization_markers."
     )
     parser.add_argument("--blue_markers", nargs="+", default=[], help="Optional markers for blue channel")
 
@@ -133,7 +133,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--log_level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="WARNING")
     parser.add_argument("--check_output_exist", action="store_true", default=False,
                         help="Skip FOVs if output already exists in normalization folder")
-    parser.add_argument("--normalisation_markers", nargs="*", default=None,
+    parser.add_argument("--normalization_markers", nargs="*", default=None,
                         help="Sensor markers to normalize functional markers (e.g. CD3 CD45 Vimentin)")
     parser.add_argument("--list_available_markers", action="store_true",
                         help="Print available marker names from first FOV")
@@ -176,7 +176,12 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "-y", "--yes",
         action="store_true",
-        help=argparse.SUPPRESS
+        help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--normalization",
+        choices=["area", "sensormarker"],
+        default="sensormarker",
+        help="Normalization method to use ('area' or 'sensormarker'). Default: sensormarker"
     )
 
 
@@ -273,7 +278,7 @@ def setup_output_directories(output_base: str, args) -> dict:
         "unhuddle_sum": os.path.join(output_base, "processed_data", "unhuddle_sum"),
         "unhuddle_norm": os.path.join(output_base, "processed_data", "unhuddle_normalized"),
         "QC": os.path.join(output_base, "QC"),
-        "QC_normstats": os.path.join(output_base, "QC", "normalisation_stats"),
+        "QC_normstats": os.path.join(output_base, "QC", "normalization_stats"),
     }
     # Conditional folders
     if getattr(args, "create_adata", False):
@@ -420,7 +425,7 @@ def build_reallocation_args(fov: str, dirs: dict, args: argparse.Namespace):
         fov,
         protein_df,
         dirs,
-        args.normalisation_markers,
+        args.normalization_markers,
         args.use_denoised,
         args.log_level,
     )
@@ -578,6 +583,7 @@ def run_qc_pipeline(args, adata, dirs):
 from pathlib import Path
 from typing import List, Dict, Optional
 import logging
+import numpy as np
 
 from unhuddle_denoise.normalization import (
     _per_cell_normalize,
@@ -592,6 +598,7 @@ def run_cohort_normalization_adaptive(
     dirs: Dict[str, str],
     markers: List[str],
     sensor_markers: Optional[List[str]] = None,
+    normalization: str = "sensormarker",
     sample_max_cells: int = 100_000,
     min_range: float = 1e-3,
     cv_frac_thresh: float = 0.05,
@@ -599,34 +606,32 @@ def run_cohort_normalization_adaptive(
     """
     Perform adaptive, cohort-aware normalization with a unified scaling strategy per marker.
 
-    1) Read each FOV CSV, extract Label + marker columns
-    2) Per-cell normalize by sensor_markers (or all markers if None)
-    3) Compute cohort-wide stats (percentiles, CV, fallbacks)
-    4) Apply the same per-marker scaling to each FOV
-    5) Write out normalized CSVs + a QC stats CSV per branch
+    Parameters:
+        fov_folders: List of FOV folder paths.
+        sum_dirs: Dictionary mapping branch names to input directories.
+        dirs: Dictionary of output directories.
+        markers: List of marker names.
+        sensor_markers: Optional list of sensor markers for normalization.
+        normalization: Normalization method ('area' or 'sensormarker').
+        sample_max_cells: Max cells to sample for cohort stats.
+        min_range: Minimum range for adaptive scaling.
+        cv_frac_thresh: CV fraction threshold for adaptive scaling.
     """
     logger = logging.getLogger(__name__)
+    logger.info(f"🔄 Normalization method selected: {normalization}")
 
-    # ---- validate sensor_markers ----
-    if sensor_markers is None:
-        sensor_markers = markers.copy()
-    else:
-        missing = set(sensor_markers) - set(markers)
-        if missing:
-            logger.warning(
-                "⚠️ The following sensor_markers are not in your marker list and will be ignored: %s",
-                sorted(missing),
-            )
-            sensor_markers = [m for m in sensor_markers if m in markers]
+    # Validate normalization method
+    if normalization not in ["area", "sensormarker"]:
+        raise ValueError(f"Unknown normalization method: {normalization}")
 
-    # ---- define your three branches ----
+    # Define branches and directories
     branch_to_outdir = {
         "original": dirs.get("original_norm"),
         "unhuddle": dirs.get("unhuddle_norm"),
         "denoised": dirs.get("unhuddle_denoised_norm"),
     }
 
-    # ---- process each branch ----
+    # Process each branch
     for branch, out_dir in branch_to_outdir.items():
         in_dir = sum_dirs.get(branch)
         if not in_dir or not Path(in_dir).is_dir():
@@ -646,37 +651,87 @@ def run_cohort_normalization_adaptive(
             continue
         logger.info(f"🔄 Branch '{branch}': {len(fov_files)} FOVs to normalize")
 
-        norms: List[np.ndarray]     = []
-        labels: List[pd.Series]     = []
-        fov_ids: List[str]          = []
+        norms: List[np.ndarray] = []
+        labels: List[pd.Series] = []
+        fov_ids: List[str] = []
+        areas: List[np.ndarray] = []  # Only used for area normalization
 
-        # — stage 1: read & per-cell normalize —
+        # Stage 1: Read & per-cell normalize
         for csv_file in fov_files:
             try:
-                df = pd.read_csv(csv_file, usecols=["Label", *markers])
+                cols_to_read = ["Label", *markers]
+                df_markers = pd.read_csv(csv_file, usecols=cols_to_read)
             except Exception as e:
                 logger.error(f"Failed to read '{csv_file.name}': {e}")
                 continue
 
-            if "Label" not in df:
+            if "Label" not in df_markers:
+                logger.warning(f"⚠️ Missing 'Label' column in '{csv_file.name}'")
                 continue
 
-            mat = df[markers].values
-            try:
-                norm_mat, _ = _per_cell_normalize(mat, markers, sensor_markers)
-            except Exception as e:
-                logger.error(f"Per-cell normalization failed for '{csv_file.stem}': {e}")
-                continue
+            mat = df_markers[markers].values
+
+            if normalization == "sensormarker":
+                # existing sensor-marker normalization logic
+                if sensor_markers is None:
+                    sensor_markers = markers.copy()
+                else:
+                    missing = set(sensor_markers) - set(markers)
+                    if missing:
+                        logger.warning(
+                            "⚠️ The following sensor_markers are not in your marker list and will be ignored: %s",
+                            sorted(missing),
+                        )
+                        sensor_markers = [m for m in sensor_markers if m in markers]
+
+                try:
+                    norm_mat, _ = _per_cell_normalize(mat, markers, sensor_markers)
+                except Exception as e:
+                    logger.error(f"Per-cell normalization failed for '{csv_file.stem}': {e}")
+                    continue
+
+            elif normalization == "area":
+                # Read Area from morphological CSV
+                morph_csv_file = Path(dirs['morph']) / csv_file.name  # assuming same filename
+                if not morph_csv_file.is_file():
+                    logger.error(f"⚠️ Morphological file '{morph_csv_file}' not found for area normalization.")
+                    continue
+
+                try:
+                    df_morph = pd.read_csv(morph_csv_file, usecols=["Label", "Area"])
+                except Exception as e:
+                    logger.error(f"Failed to read morphological file '{morph_csv_file.name}': {e}")
+                    continue
+
+                # Merge Area into marker dataframe based on Label
+                df_merged = pd.merge(df_markers, df_morph, on="Label", how="left")
+
+                if df_merged["Area"].isnull().any():
+                    missing_area_labels = df_merged.loc[df_merged["Area"].isnull(), "Label"].unique()
+                    logger.error(f"⚠️ Missing Area values for labels {missing_area_labels} in '{csv_file.name}'")
+                    continue
+
+                area_values = df_merged["Area"].values
+                if np.any(area_values <= 0):
+                    logger.error(f"⚠️ Non-positive area values found in '{csv_file.name}'")
+                    continue
+
+                norm_mat = df_merged[markers].values / area_values[:, np.newaxis]
+                areas.append(area_values)
+
+                # Update labels and mat to reflect merged dataframe
+                df_markers = df_merged
+                mat = df_markers[markers].values
 
             norms.append(norm_mat)
-            labels.append(df["Label"])
+            labels.append(df_markers["Label"])
             fov_ids.append(csv_file.stem)
 
         if not norms:
             logger.warning(f"⚠️ No valid FOVs after per-cell normalization for branch '{branch}'")
             continue
 
-        # — stage 2: cohort stats —
+        # Stage 2: Compute cohort stats
         logger.info(f"📊 Computing cohort stats for branch '{branch}'")
         marker_stats = compute_adaptive_marker_stats_from_cohort(
             norms,
@@ -686,9 +741,9 @@ def run_cohort_normalization_adaptive(
             cv_frac_thresh=cv_frac_thresh,
         )
 
-        # — stage 3: apply cohort scaling per FOV —
+        # Stage 3: Apply cohort scaling per FOV
         logger.info(f"🎚️ Applying cohort scaling for branch '{branch}'")
-        for fov, norm_mat, lbl in zip(fov_ids, norms, labels):
+        for idx, (fov, norm_mat, lbl) in enumerate(zip(fov_ids, norms, labels)):
             try:
                 scaled = apply_cohort_scaling(norm_mat, markers, marker_stats)
             except Exception as e:
@@ -697,16 +752,19 @@ def run_cohort_normalization_adaptive(
 
             out_df = pd.DataFrame(scaled, columns=markers)
             out_df.insert(0, "Label", lbl.values)
+
             out_file = out_path / f"{fov}.csv"
             out_df.to_csv(out_file, index=False)
             logger.debug(f"✅ Wrote normalized '{out_file}'")
 
-        # — stage 4: save QC stats (including any fallback updates) —
+        # Stage 4: Save QC stats
         qc_root = Path(dirs.get("QC_normstats", out_path.parent / "QC_normstats"))
         qc_root.mkdir(parents=True, exist_ok=True)
         stats_file = qc_root / f"{branch}_cohort_marker_qc.csv"
         marker_stats.to_csv(stats_file, index=False)
         logger.info(f"📈 Saved QC stats to '{stats_file}'")
+
+
 
 
 
