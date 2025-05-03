@@ -495,24 +495,44 @@ def qc_plot_normalization_comparison_from_X_png(
 
     # 1) Summary figure (4 panels)
     scaled_panel_title = f"Scaled ({args.normalization}-normalization)"
-
     fig, axs = plt.subplots(1, 4, figsize=(20, 5), sharex=True, sharey=False)
-    axs[0].scatter(area_rep, raw_sel.flatten(), s=point_size, alpha=alpha)
+
+    # Define robust percentile for clipping extreme outliers
+    y_percentile = 99.9
+
+    # Panel 1: Raw
+    raw_flat = raw_sel.flatten()
+    raw_ymax = np.percentile(raw_flat, y_percentile)
+    axs[0].scatter(area_rep, np.clip(raw_flat, None, raw_ymax), s=point_size, alpha=alpha)
     axs[0].set_title("All markers — Raw")
     axs[0].set_xlabel("Area")
     axs[0].set_ylabel("Intensity")
+    axs[0].margins(y=0.05)
 
-    axs[1].scatter(area_rep, raw_sensor_norm.flatten(), s=point_size, alpha=alpha)
+    # Panel 2: Raw / SensorSum
+    sensor_flat = raw_sensor_norm.flatten()
+    sensor_flat_compressed = sensor_flat.compressed() if isinstance(sensor_flat, np.ma.MaskedArray) else sensor_flat
+    sensor_ymax = np.percentile(sensor_flat_compressed, y_percentile)
+    axs[1].scatter(area_rep, np.clip(sensor_flat, None, sensor_ymax), s=point_size, alpha=alpha)
     axs[1].set_title("All markers — Raw / SensorSum")
     axs[1].set_xlabel("Area")
+    axs[1].margins(y=0.05)
 
-    axs[2].scatter(area_rep, raw_area_norm.flatten(), s=point_size, alpha=alpha)
+    # Panel 3: Raw / Area
+    area_flat = raw_area_norm.flatten()
+    area_flat_compressed = area_flat.compressed() if isinstance(area_flat, np.ma.MaskedArray) else area_flat
+    area_ymax = np.percentile(area_flat_compressed, y_percentile)
+    axs[2].scatter(area_rep, np.clip(area_flat, None, area_ymax), s=point_size, alpha=alpha)
     axs[2].set_title("All markers — Raw / Area")
     axs[2].set_xlabel("Area")
+    axs[2].margins(y=0.05)
 
-    axs[3].scatter(area_rep, scaled_sel.flatten(), s=point_size, alpha=alpha)
+    # Panel 4: Scaled (fixed range [0, 1])
+    scaled_flat = scaled_sel.flatten()
+    axs[3].scatter(area_rep, scaled_flat, s=point_size, alpha=alpha)
     axs[3].set_title(f"All markers — {scaled_panel_title}")
     axs[3].set_xlabel("Area")
+    axs[3].margins(y=0.05)
 
     fig.suptitle("Normalization Summary (All Markers)")
     fig.tight_layout(rect=[0, 0, 1, 0.95])
@@ -530,7 +550,16 @@ def qc_plot_normalization_comparison_from_X_png(
         for j, mat in enumerate((raw_sel, raw_sensor_norm, raw_area_norm, scaled_sel)):
             ax = axes[i, j]
             col_vals = mat[:, i]
-            ax.scatter(area_mask, col_vals, s=point_size * 1.5, alpha=alpha)
+
+            if j < 3:
+                col_vals_flat = col_vals.compressed() if isinstance(col_vals, np.ma.MaskedArray) else col_vals
+                y_max = np.percentile(col_vals_flat, y_percentile)
+                ax.scatter(area_mask, np.clip(col_vals, None, y_max), s=point_size * 1.5, alpha=alpha)
+                ax.margins(y=0.05)
+            else:
+                ax.scatter(area_mask, col_vals, s=point_size * 1.5, alpha=alpha)
+                ax.margins(y=0.05)
+
             if i == 0:
                 title = ("Raw", "Raw / SensorSum", "Raw / Area", scaled_panel_title)[j]
                 ax.set_title(title)

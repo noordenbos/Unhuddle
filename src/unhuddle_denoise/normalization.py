@@ -128,7 +128,8 @@ def apply_cohort_scaling(
 
         # 2) Binary scaling and all zero
         if method in {"binary_by_cv_or_frac", "binary_by_frac"}:
-            scaled[:, j] = (col > 0).astype(float)
+            EPS = 1e-4
+            scaled[:, j] = (col > EPS).astype(float)
             continue
         elif method == "all_zero":
             scaled[:, j] = 0.0
