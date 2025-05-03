@@ -32,7 +32,7 @@ def log_column_stats(X: pd.DataFrame, fov: str):
         )
 
 def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: str = "adata1.h5ad", max_workers: int = 16):
-    """Reconciles processed FOV outputs into a single AnnData object with robust marker alignment."""
+    """Reconciles processed FOV outputs into a single AnnData object with robust marker alignment and segmentation masks."""
 
     adata_dir = Path(dirs["adata"])
     if not adata_dir.is_dir():
@@ -58,7 +58,7 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
     # Step 1: Explicitly define global marker list from reference CSV
     reference_csv = next(Path(dirs["unhuddle_norm"]).glob("*.csv"))
     reference_df = pd.read_csv(reference_csv)
-    markers = [col for col in reference_df.columns if col != "Label"]
+    markers = [col for col in reference_df.columns if col not in ["Label", "Area"]]
     logger.info(f"✅ Using reference markers from {reference_csv.name}: {markers}")
 
     for fov in tqdm(fovs, desc="Constructing AnnData"):
@@ -77,29 +77,13 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
             logger.warning(f"⚠️ Skipping FOV '{fov}': missing required files.")
             continue
 
-        intensity = convert_numeric(load_df(paths["intensity"], fov))
-        sum_unhuddle = convert_numeric(load_df(paths["sum"], fov))
-        sum_orig = convert_numeric(load_df(paths["orig_sum"], fov))
+        intensity = convert_numeric(load_df(paths["intensity"], fov))[markers]
+        sum_unhuddle = convert_numeric(load_df(paths["sum"], fov))[markers]
+        sum_orig = convert_numeric(load_df(paths["orig_sum"], fov))[markers]
         morph = convert_numeric(load_df(paths["morph"], fov))
-        denoised_intensity = convert_numeric(load_df(paths["denoised_intensity"], fov)) if paths["denoised_intensity"] and paths["denoised_intensity"].is_file() else None
-        denoised_sum = convert_numeric(load_df(paths["denoised_sum"], fov)) if paths["denoised_sum"] and paths["denoised_sum"].is_file() else None
+        denoised_intensity = convert_numeric(load_df(paths["denoised_intensity"], fov))[markers] if paths["denoised_intensity"] and paths["denoised_intensity"].is_file() else None
+        denoised_sum = convert_numeric(load_df(paths["denoised_sum"], fov))[markers] if paths["denoised_sum"] and paths["denoised_sum"].is_file() else None
         protein_df = convert_numeric(load_df(paths["protein"], fov)) if paths["protein"] and paths["protein"].is_file() else None
-
-        # Check for missing markers explicitly
-        missing_markers = set(markers) - set(intensity.columns)
-        if missing_markers:
-            logger.error(f"⚠️ Missing markers {missing_markers} in FOV '{fov}'; skipping this FOV.")
-            continue
-
-        # Explicitly reorder columns to match global marker list
-        intensity = intensity[markers]
-        sum_unhuddle = sum_unhuddle[markers]
-        sum_orig = sum_orig[markers]
-
-        if denoised_intensity is not None:
-            denoised_intensity = denoised_intensity[markers]
-        if denoised_sum is not None:
-            denoised_sum = denoised_sum[markers]
 
         if all(col in morph.columns for col in ["Nucleus_Area", "Nucleus_Centroid_Row"]):
             morph["QC_no_nucleus"] = morph[["Nucleus_Area", "Nucleus_Centroid_Row"]].isna().any(axis=1)
@@ -135,24 +119,19 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
 
         if protein_df is not None:
             exclmem_cols = [col for col in protein_df.columns if col.endswith("_ExclusionMembrane_Sum_Intensity")]
-            if exclmem_cols:
-                protein_markers = [col.replace("_ExclusionMembrane_Sum_Intensity", "") for col in exclmem_cols]
-                if set(protein_markers) == set(markers):
-                    # explicitly reorder protein_df columns to match global marker order
-                    ordered_exclmem_cols = [f"{m}_ExclusionMembrane_Sum_Intensity" for m in markers]
-                    all_layers["ExclMem_Sum"].append(protein_df[ordered_exclmem_cols].values)
-                    logger.info(f"✅ Reconstructed layer 'ExclMem_Sum' from protein_features for FOV: {fov}")
-                else:
-                    missing_in_protein = set(markers) - set(protein_markers)
-                    extra_in_protein = set(protein_markers) - set(markers)
-                    logger.warning(
-                        f"⚠️ Protein markers mismatch in FOV '{fov}': "
-                        f"missing in protein={missing_in_protein}, extra in protein={extra_in_protein}; "
-                        f"skipping ExclMem_Sum layer."
-                    )
-
-    logger.debug(f"🧮 Final FOVs used: {fov_count}")
-    logger.debug(f"🧪 Denoised FOVs used: {len(denoised_fovs)} → {denoised_fovs}")
+            protein_markers = [col.replace("_ExclusionMembrane_Sum_Intensity", "") for col in exclmem_cols]
+            if set(protein_markers) == set(markers):
+                ordered_exclmem_cols = [f"{m}_ExclusionMembrane_Sum_Intensity" for m in markers]
+                all_layers["ExclMem_Sum"].append(protein_df[ordered_exclmem_cols].values)
+                logger.info(f"✅ Reconstructed layer 'ExclMem_Sum' from protein_features for FOV: {fov}")
+            else:
+                missing_in_protein = set(markers) - set(protein_markers)
+                extra_in_protein = set(protein_markers) - set(markers)
+                logger.warning(
+                    f"⚠️ Protein markers mismatch in FOV '{fov}': "
+                    f"missing in protein={missing_in_protein}, extra in protein={extra_in_protein}; "
+                    f"skipping ExclMem_Sum layer."
+                )
 
     adata = AnnData(
         X=np.vstack(all_X),
@@ -165,6 +144,17 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
         if arrays:
             adata.layers[key] = np.vstack(arrays)
             logger.debug(f"📊 Layer '{key}' shape: {adata.layers[key].shape}")
+
+    # ✅ Restored segmentation mask loading with debug logging
+    adata.uns["spatial"] = {}
+    for fov in fovs:
+        mask_path = Path(working_path) / fov / "deepcel_mask.tiff"
+        if mask_path.is_file():
+            segmentation = imread(mask_path)
+            adata.uns["spatial"][fov] = {"segmentation": segmentation}
+            logger.debug(f"✅ Loaded segmentation mask for {fov}, shape: {segmentation.shape}")
+        else:
+            logger.warning(f"⚠️ Mask file not found for {fov}: {mask_path}")
 
     adata.obs["summed_intensity"] = adata.layers["sum_unhuddle"].sum(axis=1)
     adata.uns["X_source"] = x_src
