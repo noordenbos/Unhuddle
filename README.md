@@ -14,7 +14,7 @@ On the cell to cell borderpixels, shared signal is observed due to
 
 Unhuddle knows the cell's neighbors, measures their claim to borderpixelintensity and reallocates the bordersignal to the rightful owner. Unhuddle is equiped with an optional denoiser that may be very effective on your dataset if you have a total cell number of >100,000 (however the more the better). NB total cell number is a summation over all fovs on the same staining/aquisition batch. 
 
-Unhuddle values are normalized by average phenotype marker expression, defending against variation in overall staining intensity between fovs and consequently normalized by cell size (surface). By identifying stable, broadly expressed "normalisation markers" and performing per-cell normalization, UNHUDDLE enables more accurate within-cell-type comparison of functional markers (e.g., checkpoint proteins), even in spatially crowded microenvironments. 
+Unhuddle values are normalized by average phenotype marker expression, defending against variation in overall staining intensity between fovs and consequently normalized by cell size (surface). By identifying stable, broadly expressed "normalization markers" and performing per-cell normalization, UNHUDDLE enables more accurate within-cell-type comparison of functional markers (e.g., checkpoint proteins), even in spatially crowded microenvironments. 
 
 The Unhuddle pipeline is built to empower all curious scientists — whether you're a coding pro or just getting started. While you’ll need to install Python and interact with the command line, our walkthrough makes this process straightforward and accessible.
 
@@ -217,7 +217,7 @@ unhuddle-denoise \
   --base_path demodata \
   --output_base_path results/unhuddle_output \
   --nuclear_markers DNA1 DNA2 HistoneH3 \
-  --normalisation_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 CD4 CD56 SMA TCRgd \
+  --normalization_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 CD4 CD56 SMA TCRgd \
   --create_nuclear_mask \
   --max_workers 1 \
   --create_adata
@@ -228,7 +228,7 @@ unhuddle-denoise `
   --base_path demodata `
   --output_base_path results\unhuddle_output `
   --nuclear_markers DNA1 DNA2 HistoneH3 `
-  --normalisation_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 CD4 CD56 SMA TCRgd `
+  --normalization_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 CD4 CD56 SMA TCRgd `
   --create_nuclear_mask `
   --max_workers 1 `
   --create_adata
@@ -493,7 +493,7 @@ AnnData object with n_obs × n_vars = 134299 × 39
 
   - Replace `--base_path demodata` with the actual path to your folder containing `{FOV}\` subdirectories
   - use `--list_available_markers` and run the command
-  - update the `--nuclear_markers` and the `normalisation_markers` (tip the normalisation markers give a rather ON/OFF signal, while other 'functional' markers are more normal distributed)
+  - update the `--nuclear_markers` and the `normalization_markers` (tip the normalization markers give a rather ON/OFF signal, while other 'functional' markers are more normal distributed)
   - have your own masks? Add `--mask_pattern` -->Glob pattern to find your mask (e.g. `*_mask.tiff`). NB do not use `*.ome.tiff`
   - you do not have your own masks? Try the deepcell webloader function! Make sure to install firefox and geckodriver, add the flags `--create_deepcell_mask` and `--geckodriver_path`.
   - run the pipeline and check the overlay files, want to adapt the markers used for the overlay? use the overrides: `--nuclear-markers_overlay` and `--membrane-markers_overlay`, rerun.
@@ -574,7 +574,7 @@ For each FOV (field of view) folder, the following stages are run:
   - `/unhuddle_normalized/{fov}.csv`
   - `/original_normalized/{fov}.csv`
   
-<img src="assets/images/example_normalisation.png" alt="logo" width="550" align="right"/>  
+<img src="assets/images/example_normalization.png" alt="logo" width="550" align="right"/>  
 
 #### 🖼️ Normalization Visualization Module
 - Generates:
@@ -605,7 +605,7 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 ### 7. **DeepCell Mask Creation** (third party software)
 - If `--create_deepcell_mask` is enabled:
   - RGB overlays are constructed from marker images to highlight relevant structures for segmentation.
-  - By default, the overlay uses the markers specified in `--normalisation_markers` and `--nuclear_markers`.
+  - By default, the overlay uses the markers specified in `--normalization_markers` and `--nuclear_markers`.
   - You can **override the default overlay composition** using:
     - `--membrane_markers_overlay`
     - `--nuclear_markers_overlay`
@@ -653,7 +653,7 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 
 | Argument                     | Description |
 |-----------------------------|-------------|  
-| `--normalisation_markers` | **Required** unless using `--list_available_markers` |
+| `--normalization_markers` | **Required** unless using `--list_available_markers` |
 | `--nuclear-markers`            | **Required** unless using `--list_available_markers` |  
 | `--list_available_markers` | List markers and exit |
 
@@ -677,7 +677,7 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 | Argument                   | Description |
 |---------------------------|-------------|
 | `--nuclear-markers_overlay`            | Markers for red channel override (nuclear) default: use `nuclear_markers`|  
-| `--membrane-markers_overlay`          | Markers for green channel override (membrane/cytoplasm) default: use `normalisation_markers` |  
+| `--membrane-markers_overlay`          | Markers for green channel override (membrane/cytoplasm) default: use `normalization_markers` |  
 | `--blue-markers`           | Optional markers for blue channel |
 
 ---
@@ -687,7 +687,7 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 | Argument              | Description                                                                                     |
 |-----------------------|-------------------------------------------------------------------------------------------------|
 | `--use_denoised`      | Enables **cohort-level denoising** of marker intensities using signal vs. noise cone modeling. |
-| `--normalisation_markers` | Required. Markers used for per-cell normalization (e.g., CD45, Vimentin).                 |
+| `--normalization_markers` | Required. Markers used for per-cell normalization (e.g., CD45, Vimentin).                 |
 | `--nuclear_markers`   | Required. Markers used for nucleus detection and morphology extraction.                        |
 
 ---
@@ -831,12 +831,12 @@ The denoising step is optional and triggered with `--use_denoised`. For small co
 
 ### 🎚 Phenotype Marker Normalization Strategy (not yet implemented in the pipeline)
 
-The per phenotype marker normalisation is meant to compare certain functional marker across cell types. As the claim on intensity may vary quite a bit between cell types (Treg for example in the demodata can use CD45, CD7, CD3, CD4, FOXP3; while a dendritic cell may only use CD11c, that introduce bias precluding interpretation. However if you would want to compare Tregs between areas or patients the per total protein normalisation suffices and correct efficiently for overall staining intensity between fovs and for cell size. 
+The per phenotype marker normalization is meant to compare certain functional marker across cell types. As the claim on intensity may vary quite a bit between cell types (Treg for example in the demodata can use CD45, CD7, CD3, CD4, FOXP3; while a dendritic cell may only use CD11c, that introduce bias precluding interpretation. However if you would want to compare Tregs between areas or patients the per total protein normalization suffices and correct efficiently for overall staining intensity between fovs and for cell size. 
 
 After raw or denoised marker intensities are computed, UNHUDDLE applies a **normalization procedure** to harmonize expression across cells:
 
 1. **Normalization Factor Calculation**:
-   - A user-defined set of `--normalisation_markers` (e.g., CD45, Vimentin) is used.
+   - A user-defined set of `--normalization_markers` (e.g., CD45, Vimentin) is used.
    - The top 4 highest-expressing markers (per cell) are averaged to compute a **per-cell normalization factor**.
 
 2. **Rescaling**:
