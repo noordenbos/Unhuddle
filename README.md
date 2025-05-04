@@ -179,38 +179,8 @@ unhuddle-denoise --help
 ```
 Should print a list of CLI arguments and options.
 
-## 🗂️ 5. Check Input Requirements
 
-The base input directory should contain one folder per FOV:
-
-```
-base_path/
-├── FOV1/
-│   ├── CD3.ome.tiff
-│   ├── CD20.ome.tiff
-│   └── ...
-├── FOV2/
-│   ├── CD3.ome.tiff
-│   └── ...
-```
-Each FOV folder should contain:
-- Denoised marker images (`{marker}.ome.tiff`, shape: `H x W`, dtype: `float32/64`)
-- Optionally: a segmentation mask (`*.tiff`, shape:   `H x W` or `Z x H x W`, dtype: `uint16`)  
-  NB do not use *ome.tiff for the mask  
-  NB the pipeline will detect and squeeze the Z dimension automatically)  
-  If a mask is not provided, one can be generated using `--create_deepcell_mask`.
-
-🎯**protip:**  
-contain the patientID in the FOV-name: `{patientID}_{FOVnumber}`.  
-NB do not use underscores `_` within patientID or FOVnumber.
- 
-example for the first fov of **P**atient **23**:
-```
-base_path/
-├── P23_1/
-│   ├── CD3.ome.tiff
-```
-## 🧪 6. Run the Pipeline on Included Demo Data
+## 🧪 5. Run the Pipeline on Included Demo Data
 linux:
 ```bash
 unhuddle-denoise \
@@ -235,7 +205,7 @@ unhuddle-denoise `
 ```
 
 
-## 🌐 7. DeepCell-Mesmer Integration 
+## 🌐 6. DeepCell-Mesmer Integration (if you have your own masks, you can skip this step)
 
 UNHUDDLE can upload overlays to [DeepCell.org](https://deepcell.org) fully headless using Selenium and Firefox with GeckoDriver — **no GUI interaction**. This enables a fully automated pipeline from raw pixel data to single-cell DeepCell predictions and unhuddle clean-up.  
   
@@ -344,7 +314,7 @@ During installation, choose **Custom Setup** and install to:
 %USERPROFILE%\tools\Firefox
 ```
 
-💡 Add this to your system `PATH`:
+💡 If you did not get prompted to add firefox to `path` during installation, you can add manually in the terminal via this command:
 ```powershell
 [System.Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\tools\Firefox", [System.EnvironmentVariableTarget]::User)
 ```
@@ -399,7 +369,7 @@ $HOME/tools/geckodriver --version
 
 <br>
 
-## 🚀 8. Get more out of the data with Unhuddle extensions
+## 🚀 7. Get more out of the data with Unhuddle extensions
 
 
 <details>
@@ -563,16 +533,56 @@ AnnData object with n_obs × n_vars = 134299 × 39
 
 # 🚀🚀 Ready for your own data?
 
-  - Replace `--base_path demodata` with the actual path to your folder containing `{FOV}\` subdirectories
-  - use `--list_available_markers` and run the command
-  - update the `--nuclear_markers` and the `normalization_markers` (tip the normalization markers give a rather ON/OFF signal, while other 'functional' markers are more normal distributed)
-  - have your own masks? Add `--mask_pattern` -->Glob pattern to find your mask (e.g. `*_mask.tiff`). NB do not use `*.ome.tiff`
-  - you do not have your own masks? Try the deepcell webloader function! Make sure to install firefox and geckodriver, add the flags `--create_deepcell_mask` and `--geckodriver_path`.
-  - run the pipeline and check the overlay files, want to adapt the markers used for the overlay? use the overrides: `--nuclear-markers_overlay` and `--membrane-markers_overlay`, rerun.
-  - Try `use_denoise`! the pipeline will calculate the number of total cells and will inform you when there is less than 100.000 cells, you can choose to skip denoise at that stage. Inspect the denoiser_QC.pdf!
-  - Inspect all QC. Are you happy? Run dimension reduction using your favorite algorithm (currently not supported in Unhuddle) and load the coordinates in the pipeline using `--add_dimension_reduction path/to/your_dr_coords`, `--coord_cols yourcolname_1 yourcolname_2` and `--check_output_exist`. Rerun and you will see you filtering results in your dimension reduction render, which will be very helpful during phenotyping.
-  - Proceed to phenotyping using your preferred method. Use the jupyter notebook file to load the phenotypes as obs in your adata object and make use of the random forest classifier to classify your 'hard to classify' cells! Add your metadata and your other omic data. Render additional QC images and explore your data!
-  - Not a pro in scanpy and adata for analysis and visualisation? The attached notebook will guide you to print a conprehensive summary of your adata object that can be interpreted by your favorite LLM. As your LLM is now aware of how to link all data, you can just instruct the chatbot in plane language your needs and it will give you jupyter notebook snippets to project features on your dimension reduction plot, render tissue images color coded for the various cell type, perform group comparison etc... Happy sciencing!
+## 🗂️ Check Input Requirements
+
+The base input directory should contain one folder per FOV:
+
+```
+base_path/
+├── FOV1/
+│   ├── CD3.ome.tiff
+│   ├── CD20.ome.tiff
+│   └── ...
+├── FOV2/
+│   ├── CD3.ome.tiff
+│   └── ...
+```
+Each FOV folder should contain:
+- Denoised marker images (`{marker}.ome.tiff`, shape: `H x W`, dtype: `float32/64`)
+- Optionally: a segmentation mask (`*.tiff`, shape:   `H x W` or `Z x H x W`, dtype: `uint16`)  
+  NB do not use *ome.tiff for the mask  
+  NB the pipeline will detect and squeeze the Z dimension automatically)  
+  If a mask is not provided, one can be generated using `--create_deepcell_mask`.
+
+🎯**protip:**  
+contain the patientID in the FOV-name: `{patientID}_{FOVnumber}`.  
+NB do not use underscores `_` within patientID or FOVnumber.
+ 
+example for the first fov of **P**atient **23**:
+```
+base_path/
+├── P23_1/
+│   ├── CD3.ome.tiff
+```
+## Reuse the command from step 5 for your real data!
+
+1. Replace `--base_path demodata` with the actual path to your folder containing `{FOV}\` subdirectories.
+2. Replace `--output_base_path` with a fresh folder output name.
+3. Use `--list_available_markers` and run the command.
+4. Update the `--nuclear_markers` and the `normalization_markers` (normalization markers are markers that you need to define a phenotype - you rather want a yes/no answer, instead of numeric).
+5. Have your own masks? Add `--mask_pattern` --> Glob pattern to find your mask (e.g. `*_mask.tiff`). **NB:** Do not use `*.ome.tiff`.
+6. You do not have your own masks? Try the deepcell webloader function! Make sure to install Firefox and GeckoDriver, add the flags `--create_deepcell_mask` and `--geckodriver_path` (add actual GeckoDriver path).
+   5.1. Run the pipeline and check the overlay files. Want to adapt the markers used for the overlay? Use the overrides: `--nuclear-markers_overlay` and `--membrane-markers_overlay`, then rerun.
+7. Try `use_denoise`! The pipeline will calculate the number of total cells and will inform you when there are less than 100,000 cells. You can choose to skip denoise at that stage. Inspect the `denoiser_QC.pdf`!
+8. Inspect all QC. Are you happy? Run dimension reduction using your favorite algorithm (currently not supported in Unhuddle) and load the coordinates in the pipeline using:
+   - `--add_dimension_reduction path/to/your_dr_coords`
+   - `--coord_cols yourcolname_1 yourcolname_2`
+   - `--check_output_exist`
+   
+   Rerun and you will see your filtering results in your dimension reduction render, which will be very helpful during phenotyping.
+9. Proceed to phenotyping using your preferred method. Use the Jupyter notebook file to load the phenotypes as obs in your adata object and make use of the random forest classifier to classify your 'hard to classify' cells! Add your metadata and your other omic data. Render additional QC images and explore your data!
+10. Not a pro in Scanpy and adata for analysis and visualization? The attached notebook will guide you to print a comprehensive summary of your adata object that can be interpreted by your favorite LLM. As your LLM is now aware of how to link all data, you can just instruct the chatbot in plain language your needs and it will give you Jupyter notebook snippets to project features on your dimension reduction plot, render tissue images color-coded for the various cell types, perform group comparisons, etc. Happy sciencing!
+
 
 
 ---
