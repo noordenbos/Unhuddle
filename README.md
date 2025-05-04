@@ -456,6 +456,78 @@ Windows: `--output_base_path results\unhuddle_extended_output`
 ## Congrats you made it to the end of the tutorial! 
 
 <details>
+<summary><strong>Inspect output folder</strong></summary>
+
+```yaml
+<output_base_path>/
+├── processed_data/                # data tables as {fov}.csv
+│   ├── original_tables/           
+│   │   ├── original_sum/          # Before unhuddle -intensity sums
+│   │   └── original_normalized/   # Before unhuddle -normalized
+│   ├── unhuddle_sum/              # After unhuddle -intensity sums
+│   ├── unhuddle_normalized/       # After unhuddle -normalized
+│   ├── unnuddle_denoised_sum/     # After unhuddle -denoised intensity sums (if --use_denoise) 
+│   └── unhuddle_denoised_normalized/  # After unhuddle -denoised and normalized (if --use_denoise)
+│
+├── features/
+│   ├── morphology_features/       # Per-cell morphology metrics
+│   └── protein_features/          # Per-cell raw protein intensities
+│
+├── QC/                            # see next section for QC (if --create_adata)
+│
+├── adata_objects/                 # see next section for AnnData (if --create_adata)
+│
+├── logs/                          # One log file per run
+│
+└── cli_call.txt                   # Exact CLI invocation parameters
+```
+</details>  
+
+<details>
+<summary><strong>QC and visualisations</strong></summary>
+
+```yaml
+QC/
+│
+├── filtering/                # Filtering strategy
+│   ├── total_intensity_distribution.png            
+│   │                         # see --low_intensity_threshold on distribution
+│   ├── density_maps/         # Kernel density plots of low-intensity cells
+│   │   └── <FOV>.png
+│   │
+│   ├── segmentation/         # Overlay filtering QC on segmentation masks
+│   │   └── <FOV>.png             
+│   │
+│   ├── storyboards/          # Combined “storyboard” images
+│   │   ├── density_storyboard.png
+│   │   │                     # All density_maps in a single grid
+│   │   └── segmentation_storyboard.png # All segmentation overlays stacked
+│   │                         # All per fov images -filtering QC on segmentation masks- in a single grid 
+│   ├── dr_qc.png             # Filtering results on dimension reduction embedding (if present)
+│   ├── overall_stats.csv     # Cohort‐wide cell‐count & filter metrics
+│   └── per_fov_stats.csv     # Per‐FOV cell‐count & filter metric
+│
+├── metadata_denoise/         # (if `--use_denoise`) Denoiser diagnostics
+│   ├── denoiser_metadata.csv # Model parameters & summary stats
+│   └── denoiser_QC.pdf       # plotting of signal and noise cone
+│
+├── normalization_plots/      # Scatter‐plot comparisons of normalization after unhuddle data
+│   ├── norm_comparison_summary.png  
+│   └── normalization_per_marker.png
+│
+└── normalization_stats/      # metadata normalization and scaling
+    ├── original_cohort_marker_qc.csv
+    ├── unhuddle_cohort_marker_qc.csv
+    └── denoised_cohort_marker_qc.csv
+
+```  
+</details>  
+
+
+  
+</details>  
+
+<details>
 <summary><strong>Inspect your adata object in jupyter notebook</strong></summary>
 
 ```python
