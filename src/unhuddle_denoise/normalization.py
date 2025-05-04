@@ -185,7 +185,7 @@ def compute_adaptive_marker_stats_from_cohort(
         var_names: List[str],
         sample_max_cells: int = 100_000,
         min_range: float = 1e-3,
-        cv_frac_thresh: float = 0.05
+        cv_frac_thresh: float = 0.01
 ) -> pd.DataFrame:
     """
     Build cohort‐wide scaling stats for each marker with adaptive fallbacks.

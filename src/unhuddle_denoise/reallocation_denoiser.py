@@ -373,7 +373,8 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs):
         if isinstance(metadata, pd.DataFrame):
             metadata.to_csv(metadata_path, index=False)
         elif isinstance(metadata, dict):
-            pd.DataFrame.from_dict(metadata).to_csv(metadata_path, index=False)
+            metadata_df = pd.DataFrame.from_dict(metadata, orient='index')
+            metadata_df.to_csv(metadata_path, index=True)
         else:
             raise TypeError("Unsupported metadata format; expected DataFrame or dict.")
         logger.info(f"🧾 Saved denoiser metadata: {metadata_path}")

@@ -278,11 +278,12 @@ def setup_output_directories(output_base: str, args) -> dict:
         "unhuddle_sum": os.path.join(output_base, "processed_data", "unhuddle_sum"),
         "unhuddle_norm": os.path.join(output_base, "processed_data", "unhuddle_normalized"),
         "QC": os.path.join(output_base, "QC"),
-        "QC_normstats": os.path.join(output_base, "QC", "normalization_stats"),
+        "QC_normstats": os.path.join(output_base, "QC", "normalization","norm_stats"),
     }
     # Conditional folders
     if getattr(args, "create_adata", False):
         dirs["adata"] = os.path.join(output_base, "adata_objects")
+        dirs["QC_plot"] = os.path.join(dirs["QC"], "normalization", "norm_plots")
 
     if getattr(args, "fitsne", False):
         dirs["dr"] = os.path.join(output_base, "dr_coords")
@@ -290,7 +291,7 @@ def setup_output_directories(output_base: str, args) -> dict:
     if getattr(args, "use_denoised", False):
         dirs["unhuddle_denoised_sum"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum")
         dirs["unhuddle_denoised_norm"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized")
-        dirs["QC_metadata_denoised"] = os.path.join(output_base, "QC", "metadata_denoise")
+        dirs["QC_metadata_denoised"] = os.path.join(output_base, "QC", "denoiser")
 
     # Actually create the folders
     for path in dirs.values():

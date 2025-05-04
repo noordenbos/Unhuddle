@@ -442,8 +442,7 @@ def qc_plot_normalization_comparison_from_X_png(
     adata = adata[adata.obs['QC_final_keep']].copy()
 
     # prepare output folder
-    out_dir = Path(dirs.get("QC_plot", Path(dirs["QC"]) / "normalization_plots"))
-    out_dir.mkdir(parents=True, exist_ok=True)
+    out_dir = dirs["QC_plot"]
 
     # pick raw layer or fallback
     if raw_layer not in adata.layers:
@@ -536,7 +535,7 @@ def qc_plot_normalization_comparison_from_X_png(
 
     fig.suptitle("Normalization Summary (All Markers)")
     fig.tight_layout(rect=[0, 0, 1, 0.95])
-    fig.savefig(out_dir / "norm_comparison_summary.png", dpi=summary_dpi)
+    fig.savefig(os.path.join(out_dir, "norm_comparison_summary.png"), dpi=summary_dpi)
     plt.close(fig)
 
     # 2) Per-marker storyboard grid (4 panels per marker)
@@ -569,7 +568,7 @@ def qc_plot_normalization_comparison_from_X_png(
                 ax.set_xlabel("Area")
 
     fig.tight_layout()
-    fig.savefig(out_dir / "normalization_per_marker.png", dpi=per_marker_dpi)
+    fig.savefig(os.path.join(out_dir,"normalization_per_marker.png"), dpi=per_marker_dpi)
     plt.close(fig)
 
     logger.info(f"✅ QC PNGs saved to {out_dir}")
@@ -580,12 +579,13 @@ def extend_dirs_with_qc(dirs):
     Extend an existing dirs dictionary with standardized QC subfolders.
     Assumes dirs["QC"] already exists.
     """
-    dirs["QC_density"] = os.path.join(dirs["QC"], "density_maps")
-    dirs["QC_segmentation"] = os.path.join(dirs["QC"], "segmentation")
-    dirs["QC_storyboards"] = os.path.join(dirs["QC"], "storyboards")
-    dirs["QC_filtering"] = os.path.join(dirs["QC"], "filtering")
 
-    for key in ["QC_density", "QC_segmentation", "QC_storyboards", "QC_filtering"]:
+    dirs["QC_filtering"] = os.path.join(dirs["QC"], "filtering")
+    os.makedirs(dirs["QC_filtering"], exist_ok=True)
+    dirs["QC_density"] = os.path.join(dirs["QC"], "filtering","density_maps")
+    dirs["QC_segmentation"] = os.path.join(dirs["QC"], "filtering","segmentation")
+    dirs["QC_storyboards"] = os.path.join(dirs["QC"], "filtering","storyboards")
+    for key in ["QC_density", "QC_segmentation", "QC_storyboards"]:
         os.makedirs(dirs[key], exist_ok=True)
 
     return dirs
