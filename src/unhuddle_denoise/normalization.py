@@ -69,20 +69,6 @@ def _per_cell_normalize(
     return norm_matrix, cell_total
 
 
-import numpy as np
-import logging
-from typing import List
-import pandas as pd
-
-logger = logging.getLogger(__name__)
-
-import numpy as np
-import logging
-from typing import List
-import pandas as pd
-
-logger = logging.getLogger(__name__)
-
 def apply_cohort_scaling(
     norm_matrix: np.ndarray,
     var_names: List[str],
@@ -185,7 +171,7 @@ def compute_adaptive_marker_stats_from_cohort(
         var_names: List[str],
         sample_max_cells: int = 100_000,
         min_range: float = 1e-3,
-        cv_frac_thresh: float = 0.01
+        cv_frac_thresh: float = 0.01,
 ) -> pd.DataFrame:
     """
     Build cohort‐wide scaling stats for each marker with adaptive fallbacks.
