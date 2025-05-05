@@ -249,7 +249,7 @@ tar -xvzf geckodriver-*.tar.gz
 chmod +x geckodriver
 ```
 
-✅ GeckoDriver path:
+✅ This is the updated path for the placeholder 'path/to/your/geckodriver' in `--geckodriver_path path/to/your/geckodriver`:
 ```bash
 $HOME/tools/geckodriver
 ```
@@ -288,7 +288,7 @@ tar -xvzf geckodriver-*.tar.gz
 chmod +x geckodriver
 ```
 
-✅ GeckoDriver path:
+✅ This is the updated path for the placeholder 'path/to/your/geckodriver' in `--geckodriver_path path/to/your/geckodriver`:
 ```bash
 $HOME/tools/geckodriver
 ```
@@ -335,7 +335,7 @@ Remove-Item "$toolsDir\geckodriver.zip"
 [System.Environment]::SetEnvironmentVariable("Path", $env:Path + ";$env:USERPROFILE\tools", [System.EnvironmentVariableTarget]::User)
 ```
 
-✅ GeckoDriver will now be available as:
+✅ This is the updated path for the placeholder 'path/to/your/geckodriver' in `--geckodriver_path path/to/your/geckodriver`: 
 ```
 %USERPROFILE%\tools\geckodriver.exe
 ```
