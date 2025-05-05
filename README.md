@@ -408,7 +408,7 @@ Windows: `--output_base_path results\unhuddle_extended_output`
 ```
 
 
-- If Firefox + GeckoDriver are installed add these lines to the call (extended demodata not needed):  
+- If Firefox + GeckoDriver are installed add these lines to the call (step 6), nb extended demodata not needed:  
 (make sure all your lines, but the last have a continuation indicator: `\`, for windows change to ` )
 ```bash
 --create_deepcell_mask \
