@@ -50,7 +50,7 @@ def save_signal_noise_qc_from_df(
     gridsize=80,
     density_quantile=0.1,
     min_cells_per_bin=10,
-    cols=3,
+    cols=2,  # Two markers per row
     x_max=300
 ):
     logger = logging.getLogger("unhuddle")
@@ -71,7 +71,8 @@ def save_signal_noise_qc_from_df(
             colname = f"{marker}{layer_suffix}"
             if colname not in df.columns or area_col not in df.columns:
                 logger.warning(f"⚠️ Missing required columns for marker '{marker}', skipping.")
-                axs[i].text(0.5, 0.5, "Data missing", ha='center', va='center', transform=axs[i].transAxes)
+                axs[i * 2].text(0.5, 0.5, "Data missing", ha='center', va='center', transform=axs[i * 2].transAxes)
+                axs[i * 2 + 1].axis("off")  # Hide the residual plot if data is missing
                 continue
 
             area = df[area_col].values
@@ -81,8 +82,12 @@ def save_signal_noise_qc_from_df(
             area_filt = area[mask]
             intensity_filt = intensity[mask]
 
-            ax = axs[i]
-            hb = ax.hexbin(area_filt, intensity_filt, gridsize=gridsize, cmap='Greys', bins='log', mincnt=1)
+            # Hexbin plot
+            ax_hexbin = axs[i * 2]
+            hb = ax_hexbin.hexbin(area_filt, intensity_filt, gridsize=gridsize, cmap='Greys', bins='log', mincnt=1)
+
+            # Scatter plot (background)
+            ax_hexbin.scatter(area_filt, intensity_filt, color='blue', alpha=0.1, s=5)  # Scatter behind hexbin
 
             counts = hb.get_array()
             xbins = hb.get_offsets()[:, 0]
@@ -93,7 +98,8 @@ def save_signal_noise_qc_from_df(
 
             if not np.any(keep_mask):
                 logger.warning(f"⚠️ No valid apex region for marker '{marker}', skipping fit.")
-                ax.text(0.5, 0.5, "No valid peak", ha='center', va='center', transform=ax.transAxes, color='red')
+                ax_hexbin.text(0.5, 0.5, "No valid peak", ha='center', va='center', transform=ax_hexbin.transAxes, color='red')
+                axs[i * 2 + 1].axis("off")  # Hide the residual plot if no valid peak
                 continue
 
             top_x = xbins[keep_mask]
@@ -107,7 +113,7 @@ def save_signal_noise_qc_from_df(
             signal_intercept = apex_anchor_y - signal_slope * apex_anchor_x
             x_signal = np.linspace(apex_anchor_x, x_max, 200)
             y_signal = signal_slope * x_signal + signal_intercept
-            ax.plot(x_signal, y_signal, color='orange', lw=2, label="Signal fit")
+            ax_hexbin.plot(x_signal, y_signal, color='orange', lw=2, label="Signal fit")
 
             # Infer the noise slope from hexbin bins above the apex.
             noise_mask = (xbins > apex_area) & (counts > density_thresh) & (counts >= min_cells_per_bin)
@@ -120,28 +126,37 @@ def save_signal_noise_qc_from_df(
 
                 x_noise = np.linspace(apex_area, x_max, 200)
                 y_noise = noise_slope * (x_noise - apex_area)
-                ax.plot(x_noise, y_noise, color='green', lw=2, label="Noise fit")
+                ax_hexbin.plot(x_noise, y_noise, color='green', lw=2, label="Noise fit")
 
             # Mark apex
-            ax.plot(apex_area, apex_intensity, 'ro', label=f"Apex @ {apex_area:.1f}")
-            ax.axvline(apex_area, linestyle='--', color='orange')
-            ax.set_title(marker)
-            ax.set_xlabel("Area")
-            ax.set_ylabel("Intensity")
-            ax.legend(fontsize=8)
+            ax_hexbin.plot(apex_area, apex_intensity, 'ro', label=f"Apex @ {apex_area:.1f}")
+            ax_hexbin.axvline(apex_area, linestyle='--', color='orange')
+            ax_hexbin.set_title(marker)
+            ax_hexbin.set_xlabel("Area")
+            ax_hexbin.set_ylabel("Intensity")
+            ax_hexbin.legend(fontsize=8)
 
             # --- Residuals Plot ---
-            # Calculate residuals
             residuals = intensity_filt - (signal_slope * area_filt + signal_intercept)
-            ax_residual = axs[i + n]  # Use the next column for residuals
-            ax_residual.scatter(area_filt, residuals, color='blue', alpha=0.5)
+            ax_residual = axs[i * 2 + 1]  # Residual plot
+            ax_residual.scatter(area_filt, residuals, color='blue', alpha=0.5, s=10)  # Reduced dot size
             ax_residual.axhline(0, color='red', linestyle='--')
             ax_residual.set_title(f"Residuals for {marker}")
             ax_residual.set_xlabel("Area")
             ax_residual.set_ylabel("Residuals")
 
+            # Set y-limits based on residuals
+            ax_residual.set_ylim(bottom=min(residuals) * 1.1, top=max(residuals) * 1.1)
+
+            # Use the residuals plot to set the y-limits for the hexbin plot
+            ax_hexbin.set_ylim(bottom=min(residuals) * 1.1, top=max(residuals) * 1.1)
+
+            # Set stable x-axis limits
+            ax_hexbin.set_xlim(0, x_max)
+            ax_residual.set_xlim(0, x_max)
+
         # Hide any empty axes
-        for j in range(len(markers), len(axs)):
+        for j in range(len(markers) * 2, len(axs)):
             axs[j].axis("off")
 
         plt.tight_layout()
