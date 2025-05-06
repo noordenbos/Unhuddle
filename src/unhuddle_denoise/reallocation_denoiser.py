@@ -1,4 +1,6 @@
 import os
+from typing import Dict, Optional, Union, Any
+
 import pandas as pd
 import numpy as np
 import logging
@@ -12,42 +14,35 @@ warnings.filterwarnings("ignore", message=".*partition.*MaskedArray.*")
 logger = logging.getLogger(__name__)
 
 
-
-def infer_apex_from_smoothed_histogram(area_filt, intensity_filt, bins=60, sigma=1.2, target_percentile=0.5):
-    """Infer apex from smoothed 2D histogram at a fixed percentile (e.g., 0.5%)."""
-    hist, xedges, yedges = np.histogram2d(area_filt, intensity_filt, bins=[bins, bins])
-    smoothed = gaussian_filter(hist, sigma=sigma)
-
-    xcenters = (xedges[:-1] + xedges[1:]) / 2
-    ycenters = (yedges[:-1] + yedges[1:]) / 2
-    X, Y = np.meshgrid(xcenters, ycenters, indexing="ij")
-
-    sorted_vals = np.sort(smoothed.ravel())[::-1]
-    cumsum = np.cumsum(sorted_vals)
-    cumsum /= cumsum[-1]
-    idx_level = np.searchsorted(cumsum, (100 - target_percentile) / 100.)
-    level = sorted_vals[min(idx_level, len(sorted_vals) - 1)]
-
-    # Find contours manually
-    contour_set = plt.contour(X, Y, smoothed, levels=[level])
+def infer_apex_from_hexbin(area_filt, intensity_filt, gridsize=80, density_quantile=0.1, min_cells_per_bin=10):
+    """Infer apex from hexbin counts."""
+    hb = plt.hexbin(area_filt, intensity_filt, gridsize=gridsize, bins='log', cmap='Greys')
     plt.close()
 
-    all_segments = contour_set.allsegs[0]
-    if not all_segments:
+    counts = hb.get_array()
+    xbins = hb.get_offsets()[:, 0]
+    ybins = hb.get_offsets()[:, 1]
+
+    density_thresh = np.quantile(counts, density_quantile)
+    keep_mask = (counts > density_thresh) & (counts >= min_cells_per_bin)
+
+    if not np.any(keep_mask):
         return np.nan, np.nan
 
-    # Merge all segments together
-    all_points = np.vstack(all_segments)
-    apex_idx = np.argmax(all_points[:,1])  # maximize Intensity
-    apex_area = all_points[apex_idx, 0]
-    apex_intensity = all_points[apex_idx, 1]
+    top_x = xbins[keep_mask]
+    top_y = ybins[keep_mask]
+    peak_idx = np.argmax(top_y)
+    apex_area = top_x[peak_idx]
+    apex_intensity = top_y[peak_idx]
 
     return apex_area, apex_intensity
+
 
 def save_signal_noise_qc_from_df(
     df: pd.DataFrame,
     markers: list[str],
     output_pdf="signal_noise_qc.pdf",
+    output_png_dir="signal_noise_qc_pngs",  # Directory for PNGs
     area_col="Area",
     layer_suffix="_ExclusionMembrane_Sum_Intensity",
     apex_anchor_x=15,
@@ -58,14 +53,17 @@ def save_signal_noise_qc_from_df(
     cols=3,
     x_max=300
 ):
-    logger = logging.getLogger(__name__)
+    logger = logging.getLogger("unhuddle")
     logger.info("📊 Starting signal/noise QC plotting for %d markers...", len(markers))
 
     n = len(markers)
     rows = int(np.ceil(n / cols))
 
+    # Create output directory for PNGs
+    os.makedirs(output_png_dir, exist_ok=True)
+
     with PdfPages(output_pdf) as pdf:
-        fig, axs = plt.subplots(rows, cols, figsize=(cols * 5, rows * 5), dpi=150)
+        fig, axs = plt.subplots(rows, cols * 2, figsize=(cols * 5, rows * 5), dpi=150)  # Adjusted for residuals
         axs = axs.flatten()
 
         for i, marker in enumerate(markers):
@@ -84,77 +82,63 @@ def save_signal_noise_qc_from_df(
             intensity_filt = intensity[mask]
 
             ax = axs[i]
-            # Just for visualization: scatter plot
-            ax.hexbin(area_filt, intensity_filt, gridsize=gridsize, cmap='Greys', bins='log', mincnt=1)
+            hb = ax.hexbin(area_filt, intensity_filt, gridsize=gridsize, cmap='Greys', bins='log', mincnt=1)
 
-            # --- Smoothed histogram contour overlay ---
-            hist, xedges, yedges = np.histogram2d(area_filt, intensity_filt, bins=[60, 60])
-            smoothed = gaussian_filter(hist, sigma=1.2)
-            xcenters = (xedges[:-1] + xedges[1:]) / 2
-            ycenters = (yedges[:-1] + yedges[1:]) / 2
-            X, Y = np.meshgrid(xcenters, ycenters, indexing="ij")
+            counts = hb.get_array()
+            xbins = hb.get_offsets()[:, 0]
+            ybins = hb.get_offsets()[:, 1]
 
-            sorted_vals = np.sort(smoothed.ravel())[::-1]
-            cumsum = np.cumsum(sorted_vals)
-            cumsum /= cumsum[-1]
+            density_thresh = np.quantile(counts, density_quantile)
+            keep_mask = (counts > density_thresh) & (counts >= min_cells_per_bin)
 
-            percentiles = [10, 1, 0.5]
-            levels = []
-            for p in percentiles:
-                idx = np.searchsorted(cumsum, (100 - p) / 100.)
-                levels.append(sorted_vals[min(idx, len(sorted_vals) - 1)])
-            levels, percentiles = zip(*sorted(zip(levels, percentiles)))  # ensure increasing
-
-            try:
-                contour = ax.contour(X, Y, smoothed, levels=levels, colors=['red', 'blue', 'green'], linewidths=1.2)
-                fmt = {l: f"{p:.1f}%" for l, p in zip(contour.levels, percentiles)}
-                ax.clabel(contour, inline=True, fontsize=7, fmt=fmt)
-            except Exception as e:
-                logger.warning(f"⚠️ Contour plot failed for {marker}: {e}")
-                ax.text(0.5, 0.5, "Contour Error", ha='center', va='center', transform=ax.transAxes)
-
-            # --- Infer apex ---
-            apex_area, apex_intensity = infer_apex_from_smoothed_histogram(
-                area_filt, intensity_filt, bins=60, sigma=1.2, target_percentile=0.5
-            )
-            if np.isnan(apex_area):
-                ax.text(0.5, 0.5, "No Apex", ha='center', va='center', transform=ax.transAxes)
+            if not np.any(keep_mask):
+                logger.warning(f"⚠️ No valid apex region for marker '{marker}', skipping fit.")
+                ax.text(0.5, 0.5, "No valid peak", ha='center', va='center', transform=ax.transAxes, color='red')
                 continue
 
-            # --- Signal fit ---
+            top_x = xbins[keep_mask]
+            top_y = ybins[keep_mask]
+            peak_idx = np.argmax(top_y)
+            apex_area = top_x[peak_idx]
+            apex_intensity = top_y[peak_idx]
+
+            # Fit the signal using the apex and provided anchor point.
             signal_slope = (apex_intensity - apex_anchor_y) / (apex_area - apex_anchor_x)
             signal_intercept = apex_anchor_y - signal_slope * apex_anchor_x
             x_signal = np.linspace(apex_anchor_x, x_max, 200)
             y_signal = signal_slope * x_signal + signal_intercept
             ax.plot(x_signal, y_signal, color='orange', lw=2, label="Signal fit")
 
-            # --- Noise fit using numpy bins ---
-            hist, xedges, yedges = np.histogram2d(area_filt, intensity_filt, bins=[gridsize, gridsize])
-            xcenters = (xedges[:-1] + xedges[1:]) / 2
-            ycenters = (yedges[:-1] + yedges[1:]) / 2
-            counts = hist.flatten()
-            xbins = np.repeat(xcenters, gridsize)
-            ybins = np.tile(ycenters, gridsize)
-            density_thresh = np.quantile(counts, density_quantile)
-
+            # Infer the noise slope from hexbin bins above the apex.
             noise_mask = (xbins > apex_area) & (counts > density_thresh) & (counts >= min_cells_per_bin)
             if np.any(noise_mask):
-                X_noise = (xbins[noise_mask] - apex_area).reshape(-1, 1)
+                X_noise = xbins[noise_mask].reshape(-1, 1)
                 y_noise = ybins[noise_mask]
-                noise_model = LinearRegression(fit_intercept=False).fit(X_noise, y_noise)
-                noise_slope = noise_model.coef_[0]
+                X_noise_rel = (X_noise - apex_area)  # relative to the apex area
+                model = LinearRegression(fit_intercept=False).fit(X_noise_rel, y_noise)
+                noise_slope = model.coef_[0]
 
                 x_noise = np.linspace(apex_area, x_max, 200)
                 y_noise = noise_slope * (x_noise - apex_area)
                 ax.plot(x_noise, y_noise, color='green', lw=2, label="Noise fit")
 
-            # --- Mark apex ---
-            ax.plot(apex_area, apex_intensity, 'o', color='lime', markersize=6, label=f"Apex @ {apex_area:.1f}")
+            # Mark apex
+            ax.plot(apex_area, apex_intensity, 'ro', label=f"Apex @ {apex_area:.1f}")
             ax.axvline(apex_area, linestyle='--', color='orange')
             ax.set_title(marker)
             ax.set_xlabel("Area")
             ax.set_ylabel("Intensity")
-            ax.legend(fontsize=7)
+            ax.legend(fontsize=8)
+
+            # --- Residuals Plot ---
+            # Calculate residuals
+            residuals = intensity_filt - (signal_slope * area_filt + signal_intercept)
+            ax_residual = axs[i + n]  # Use the next column for residuals
+            ax_residual.scatter(area_filt, residuals, color='blue', alpha=0.5)
+            ax_residual.axhline(0, color='red', linestyle='--')
+            ax_residual.set_title(f"Residuals for {marker}")
+            ax_residual.set_xlabel("Area")
+            ax_residual.set_ylabel("Residuals")
 
         # Hide any empty axes
         for j in range(len(markers), len(axs)):
@@ -162,9 +146,15 @@ def save_signal_noise_qc_from_df(
 
         plt.tight_layout()
         pdf.savefig(fig, bbox_inches='tight')
+
+        # Save the figure as PNG
+        png_filename = os.path.join(output_png_dir, "signal_noise_qc.png")
+        fig.savefig(png_filename, bbox_inches='tight')
         plt.close(fig)
 
     logger.info("✅ QC PDF saved to: %s", output_pdf)
+    logger.info("✅ QC PNG saved to: %s", png_filename)
+
 
 
 
@@ -186,16 +176,7 @@ def run_denoising_pipeline_on_dataframe(
     density_quantile: float = 0.1,
     min_cells_per_bin: int = 10,
     min_area: float = 15,
-    store_metadata: bool = True,
 ) -> pd.DataFrame:
-    """
-    Adds denoised values for each marker into a DataFrame based on signal/noise cone fitting.
-    Area values < `min_area` are clipped instead of excluded.
-
-    Returns:
-        DataFrame with additional columns for denoised intensity values and optionally fitting metadata.
-    """
-    logger = logging.getLogger(__name__)
     area = np.clip(df[area_col].values, min_area, None)
     denoised_df = df.copy()
     metadata = {}
@@ -203,66 +184,72 @@ def run_denoising_pipeline_on_dataframe(
     for marker in markers:
         intensity_col = f"{marker}{layer_suffix}"
         if intensity_col not in df.columns:
-            logger.warning(f"⚠️ Marker {marker} missing in dataframe, skipping.")
             continue
 
         intensity = df[intensity_col].values.astype(np.float64)
         area_filt = area[area >= min_area]
         intensity_filt = intensity[area >= min_area]
 
-        # Infer apex
-        apex_area, apex_intensity = infer_apex_from_smoothed_histogram(
-            area_filt, intensity_filt, bins=60, sigma=1.2, target_percentile=0.5
-        )
+        # Infer apex parameters via a hexbin plot (using log-binning of counts).
+        hb = plt.hexbin(area_filt, intensity_filt, gridsize=gridsize, bins='log', cmap='Greys')
+        plt.close()
+        counts = hb.get_array()
+        xbins = hb.get_offsets()[:, 0]
+        ybins = hb.get_offsets()[:, 1]
 
-        if np.isnan(apex_area) or np.isnan(apex_intensity):
-            logger.warning(f"⚠️ Apex inference failed for marker {marker}, skipping.")
+        density_thresh = np.quantile(counts, density_quantile)
+        keep_mask = (counts > density_thresh) & (counts >= min_cells_per_bin)
+        if not np.any(keep_mask):
             continue
 
-        # --- Signal fit ---
+        top_x = xbins[keep_mask]
+        top_y = ybins[keep_mask]
+        peak_idx = np.argmax(top_y)
+        apex_area = top_x[peak_idx]
+        apex_intensity = top_y[peak_idx]
+
+        # Fit the signal using the apex and provided anchor point.
         signal_slope = (apex_intensity - signal_anchor_y) / (apex_area - signal_anchor_x)
         signal_intercept = signal_anchor_y - signal_slope * signal_anchor_x
         signal_fit = signal_slope * area + signal_intercept
 
-        # --- Noise fit (new: pure numpy binning) ---
-        hist, xedges, yedges = np.histogram2d(area_filt, intensity_filt, bins=[gridsize, gridsize])
-        xcenters = (xedges[:-1] + xedges[1:]) / 2
-        ycenters = (yedges[:-1] + yedges[1:]) / 2
-        counts = hist.flatten()
-        xbins = np.repeat(xcenters, gridsize)
-        ybins = np.tile(ycenters, gridsize)
-        density_thresh = np.quantile(counts, density_quantile)
-
+        # Infer the noise slope from hexbin bins above the apex.
         noise_mask = (xbins > apex_area) & (counts > density_thresh) & (counts >= min_cells_per_bin)
         if np.any(noise_mask):
-            X_noise = (xbins[noise_mask] - apex_area).reshape(-1, 1)
+            X_noise = xbins[noise_mask].reshape(-1, 1)
             y_noise = ybins[noise_mask]
-            noise_model = LinearRegression(fit_intercept=False).fit(X_noise, y_noise)
+            X_noise_rel = X_noise - apex_area  # relative to the apex area
+            noise_model = LinearRegression(fit_intercept=False).fit(X_noise_rel, y_noise)
             noise_slope = noise_model.coef_[0]
         else:
-            noise_slope = 0.02  # fallback
+            noise_slope = 0.02  # default fallback value
 
         noise_fit = np.where(area > apex_area, noise_slope * (area - apex_area), 0)
 
-        # --- Full signal + noise model ---
+        # Prepare the model input by stacking the signal and noise fits.
         X = np.stack([signal_fit, noise_fit], axis=1)
         valid_mask = ~np.isnan(X).any(axis=1) & ~np.isnan(intensity)
         X_clean = X[valid_mask]
         y_clean = intensity[valid_mask]
 
+        # Fit the full model (signal + noise) to the intensity.
         full_model = LinearRegression().fit(X_clean, y_clean)
         alpha, beta = full_model.coef_
         intercept_model = full_model.intercept_
 
         signal_contrib = alpha * signal_fit
         noise_contrib = beta * noise_fit
-        model_pred = signal_contrib + noise_contrib + intercept_model
-        residuals = intensity - model_pred
 
-        # --- Residual Clipping and Masking ---
+        # Compute residuals after subtracting the model contributions.
+        residuals = intensity - (signal_contrib + noise_contrib + intercept_model)
+
+        # Clip any negative residuals to 0.
         residuals_clipped = np.clip(residuals, 0, None)
+
+        # ---- New Masking Logic for Residuals ----
         positive_mask = residuals_clipped > 0
 
+        # Perform area regression only on the positive residuals.
         if np.any(positive_mask):
             X_area = area[positive_mask].reshape(-1, 1)
             y_res = residuals_clipped[positive_mask]
@@ -270,45 +257,46 @@ def run_denoising_pipeline_on_dataframe(
             gamma = area_model.coef_[0]
             intercept_area = area_model.intercept_
 
-            bias_correction = gamma * area + intercept_area
-            corrected_residuals = residuals_clipped - bias_correction
-            corrected_residuals = np.clip(corrected_residuals, 0, None)
+            computed_final_denoised = np.zeros_like(residuals_clipped)
+            computed_final_denoised[positive_mask] = (
+                residuals_clipped[positive_mask] - (gamma * area[positive_mask] + intercept_area)
+            )
+            computed_final_denoised = np.clip(computed_final_denoised, 0, None)
         else:
-            corrected_residuals = np.zeros_like(residuals_clipped)
+            computed_final_denoised = np.zeros_like(residuals_clipped)
             gamma = np.nan
             intercept_area = np.nan
 
-        # --- Robust normalization ---
-        final_denoised = np.zeros_like(corrected_residuals)
-        pos_norm_mask = corrected_residuals > 0
-        if np.any(pos_norm_mask):
-            vmin, vmax = np.percentile(corrected_residuals[pos_norm_mask], [2, 98])
+        # Apply robust normalization only on the positive (unmasked) values.
+        final_denoised = np.zeros_like(computed_final_denoised)
+        positive_norm_mask = computed_final_denoised > 0
+        if np.any(positive_norm_mask):
+            vmin, vmax = np.percentile(computed_final_denoised[positive_norm_mask], [2, 98])
             if vmax > vmin:
-                norm_vals = (corrected_residuals[pos_norm_mask] - vmin) / (vmax - vmin)
-                norm_vals = np.clip(norm_vals, 0, 1)
+                norm_values = np.clip(
+                    (computed_final_denoised[positive_norm_mask] - vmin) / (vmax - vmin), 0, 1
+                )
             else:
-                norm_vals = np.zeros_like(corrected_residuals[pos_norm_mask])
-            final_denoised[pos_norm_mask] = norm_vals
+                norm_values = np.zeros_like(computed_final_denoised[positive_norm_mask])
+            final_denoised[positive_norm_mask] = norm_values
 
-        # --- Save outputs ---
+        # Save the intermediate (post-clipping) and final denoised intensities.
         denoised_df[f"{marker}_ExclusionMembrane_Denoised_Intensity"] = residuals_clipped
         denoised_df[f"{marker}_ExclusionMembrane_FinalDenoised_Intensity"] = final_denoised
 
-        if store_metadata:
-            metadata[marker] = {
-                "apex_area": apex_area,
-                "apex_intensity": apex_intensity,
-                "signal_slope": signal_slope,
-                "noise_slope": noise_slope,
-                "alpha": alpha,
-                "beta": beta,
-                "intercept_model": intercept_model,
-                "area_regression_coef": gamma,
-                "area_regression_intercept": intercept_area,
-                "density_quantile_used": density_quantile,
-            }
+        metadata[marker] = {
+            "apex_area": apex_area,
+            "apex_intensity": apex_intensity,
+            "signal_slope": signal_slope,
+            "noise_slope": noise_slope,
+            "alpha": alpha,
+            "beta": beta,
+            "intercept_model": intercept_model,
+            "area_regression_coef": gamma,
+            "area_regression_intercept": intercept_area
+        }
 
-    return (denoised_df, metadata)
+    return {"denoised_df": denoised_df, "metadata": metadata}
 
 
 
@@ -357,13 +345,17 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs):
 
     logger.info("🚀 Running cohort-wide denoising on %d markers across %d FOVs...", len(markers), len(fov_ids))
 
-    denoised_df, metadata = run_denoising_pipeline_on_dataframe(full_df, markers)
-
+    result = run_denoising_pipeline_on_dataframe(full_df, markers)
+    denoised_df = result["denoised_df"]
+    metadata = result["metadata"]
+    logger.info(f"Type of denoised_df: {type(denoised_df)}")
     qc_output_pdf = os.path.join(qc_out_dir, "denoiser_QC.pdf")
+    qc_output_png = os.path.join(qc_out_dir, "denoiser_QC.png")
     save_signal_noise_qc_from_df(
         df=full_df,
         markers=markers,
         output_pdf=qc_output_pdf,
+        output_png_dir=qc_output_png,
         density_quantile=0.1,
         min_cells_per_bin=20
     )
