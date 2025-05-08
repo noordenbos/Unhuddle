@@ -39,7 +39,7 @@ Once preprocessed, Unhuddle seamlessly integrates morphometrics, reallocation mo
 - [Extra information on the pipeline modules](#%EF%B8%8F-pipeline-overview)
 - [FAQ](#-faq-for-new-users)  
 - [PENGUIN streamlit app](#streamlit-anchor)
-- [download additional data](#download-data)
+- [Download additional data](#download-data)
 - [Install additional dependancies webloader for DeepCell-Mesmer Integration](#-6-deepcell-mesmer-integration-if-you-have-your-own-masks-you-can-skip-this-step)
 
 ---
@@ -247,6 +247,8 @@ $HOME/tools/geckodriver
 export PATH="$HOME/tools:$PATH"
 ```
 
+[← Back to Table of Contents](#quicklinks)
+
 </details>
 
 
@@ -289,6 +291,8 @@ Remove-Item "$toolsDir\geckodriver.zip"
 %USERPROFILE%\tools\geckodriver.exe
 ```
 
+[← Back to Table of Contents](#quicklinks)
+
 </details>
 
 
@@ -309,6 +313,8 @@ $HOME/tools/geckodriver --version
 & "$env:USERPROFILE\tools\Firefox\firefox.exe" --version
 & "$env:USERPROFILE\tools\geckodriver.exe" --version
 ```
+
+[← Back to Table of Contents](#quicklinks)
 
 </details>
 
@@ -342,6 +348,8 @@ if (Test-Path "demodata" -and Test-Path "README.md") { Write-Host "Cleaning demo
 tip: set a new outputfolder to not confuse with earlier runs.  
 Linux/MacOS: `--output_base_path results/unhuddle_extended_output`  
 Windows: `--output_base_path results\unhuddle_extended_output` 
+
+[← Back to Table of Contents](#quicklinks)
 
 </details>  
 
