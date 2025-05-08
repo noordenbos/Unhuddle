@@ -163,7 +163,7 @@ NB Deepcell is **third party software**, use the webloader responsibly and cite 
 
 ### 🛠️ Manual Setup: Firefox + GeckoDriver
 
-If Firefox or GeckoDriver is not already installed, follow these steps to install both locally in `~/tools` or `%USERPROFILE%\tools`.
+If Firefox or GeckoDriver is not already installed, follow these steps to install:
 
 
 
