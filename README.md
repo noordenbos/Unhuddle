@@ -33,7 +33,7 @@ Once preprocessed, Unhuddle seamlessly integrates morphometrics, reallocation mo
 <!-- Table of Contents -->
 #### Quicklinks
 - [Introduction](#introduction)
-- [Tutorial](#-getting-started-with-the-tutorial)
+- [Tutorial](#-unhuddle-tutorial)
 - [Run the pipeline](#-5-run-the-pipeline-on-included-demo-data)
 - [Run pipeline on your own data](#-ready-for-your-own-data)
 - [Extra information on the pipeline modules](#%EF%B8%8F-pipeline-overview)
@@ -82,7 +82,7 @@ You can use the convenient streamlit app shipped with this repository:
 
 ---
 
-# 🚀 Getting Started with the tutorial
+# 🚀 Unhuddle Tutorial
 
 ## 📥 1. Clone the Repository
 via https
