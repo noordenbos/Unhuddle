@@ -992,8 +992,7 @@ That way, you're always in control — and learning while using the tools safely
 
 ---
 
-<details open>
-html<br><details id="streamlit-anchor"><summary><strong>🧪 Launch the Streamlit version of PENGUIN</strong></summary>
+<details open id="streamlit-anchor"><summary><h2>🧪 Launch the Streamlit version of PENGUIN</h2></summary>
   
 #### 🔁 Step-by-step (Mac/Linux/Windows)
 
@@ -1039,10 +1038,11 @@ Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2
     ```bash
     streamlit run app.py
     ```
+    
+[← Back to Table of Contents](#quicklinks)
 
-
-<details open>
-<summary> More raw data images needed to test this Streamlit version of PENGUIN? (expand!)</summary>
+<details>
+<summary><h3> More raw data images needed to test this Streamlit version of PENGUIN? (expand!)</h3></summary>
 
 
 **Download raw image data** Oneliners that will download and unpack all available raw demo FOVs into `demodata-raw/{FOV}` (1.5GB).
@@ -1057,11 +1057,14 @@ rm -rf demodata-raw && mkdir -p demodata-raw && curl -s https://api.github.com/r
 Remove-Item -Recurse -Force demodata-raw -ErrorAction Ignore; New-Item -ItemType Directory -Path "demodata-raw" -Force | Out-Null; (Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest).assets | Where-Object { $_.name -like "*.tar.gz" } | ForEach-Object { $url = $_.browser_download_url; $fov = [IO.Path]::GetFileNameWithoutExtension($_.name); Invoke-WebRequest -Uri $url -OutFile "$fov.tar.gz"; New-Item -ItemType Directory -Path "demodata-raw\$fov" -Force | Out-Null; tar -xzf "$fov.tar.gz" -C "demodata-raw\$fov" --strip-components=1; Remove-Item "$fov.tar.gz" }
 ```
 
-</details>
-
-
+[← Back to Table of Contents](#quicklinks)
 
 </details>
+
+
+
+</details>
+
 
 
 ## 📊 Coming Soon
