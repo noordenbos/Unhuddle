@@ -170,7 +170,7 @@ def run_denoising_pipeline_on_dataframe(
     layer_suffix: str = "_ExclusionMembrane_Sum_Intensity",
     anchor_x: float = 0,
     anchor_y: float = 0,
-    sd_multiplier: float = 2.5,
+    sd_multiplier: float = 3,
     signal_q_low: float = 95,
     signal_q_high: float = 99.99,
     min_cells_per_bin: int = 10,
