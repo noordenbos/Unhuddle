@@ -330,10 +330,8 @@ $HOME/tools/geckodriver --version
 ## 🚀 7. Get more out of the data with Unhuddle extensions
 
 
-<details open>
+<details open id="download-data">
 <summary><h3>Download Additional Demo Data for Testing of the Denoiser</h3></summary>
-
-#### Download data
 
 The following commands will automatically download and unpack all available demo FOVs into `demodata/{FOV}` using the latest GitHub release (1.5GB after expansion).
 
