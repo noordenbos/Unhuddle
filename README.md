@@ -592,6 +592,8 @@ base_path/
 ```
 ## Reuse the command from step 5 for your real data!
 
+[← Back to Step 5](#-5-run-the-pipeline-on-included-demo-data)
+
 1. Replace `--base_path demodata` with the actual path to your folder containing `{FOV}\` subdirectories.
 2. Replace `--output_base_path` with a fresh folder output name.
 3. Use `--list_available_markers` and run the command.
