@@ -22,7 +22,7 @@ Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, produc
 
 <!-- Table of Contents -->
 ## Table of Contents
-- [Getting Started](#getting-started)
+- [Link text](#getting-started)
 - [Clone the Repository](#clone-the-repository)
 - [Set Up a Virtual Environment](#set-up-a-virtual-environment)
 - [Install UNHUDDLE in Editable Mode](#install-unhuddle-in-editable-mode)
