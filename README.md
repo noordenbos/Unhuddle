@@ -993,19 +993,7 @@ sudo dnf install git
 
 ---
 
-<details><summary><h3>Q4. What do you mean with command line and why is there no graphical user interface?</h3></summary>
-
-
-
-➡️ The command line (also called terminal or shell) is a text-based interface where you type commands to run software. It allows for automation, reproducibility, and batch processing — essential for scientific data workflows.
-
-✅ You can find your terminal here:
-
-Windows: Use Git Bash (installed with Git), or search for "Command Prompt" or "PowerShell" in the Start menu.
-
-macOS: Open the built-in Terminal app (via Spotlight or Applications > Utilities).
-
-Linux: Use your default Terminal app, often found via the system menu or with the shortcut Ctrl+Alt+T.
+<details><summary><h3>Q4. Why is there no graphical user interface?</h3></summary>
 
 We currently provide a command-line interface (CLI) because it's the most flexible, scalable, and automation-friendly format for researchers working with complex datasets. A graphical user interface (GUI) may follow in the future.
 
