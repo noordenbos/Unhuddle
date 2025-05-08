@@ -5,6 +5,22 @@
 
 **Uncovering Neighborhood Heterogeneity Using Deterministic Normalization and Local Equilibrium**
 
+
+<!-- Table of Contents -->
+### Table of Contents
+- [Introduction](#-introduction)
+- [Tutorial](#-getting-started-with-the-tutorial)
+- [Run the Pipeline](#run-the-pipeline-on-included-demo-data)
+- [DeepCell-Mesmer Integration](#deepcell-mesmer-integration)
+- [Pipeline Overview](#pipeline-overview)
+- [FAQ](#faq)
+- [PENGUIN streamlit app](#)
+- [download additional data](#)
+
+---
+
+## Introduction
+
 <br>UNHUDDLE is an algorithm designed to resolve signal in densely packed tissue regions — or "cell huddles" — in multiplex spatial proteomics, where traditional absolute segmentation introduces 'neighbor noise' and blur the phenotypic signal.
 
 On the cell to cell borderpixels, shared signal is observed due to  
@@ -19,20 +35,6 @@ Unhuddle values are normalized by average phenotype marker expression, defending
 The Unhuddle pipeline is built to empower all curious scientists — whether you're a coding pro or just getting started. While you’ll need to install Python and interact with the command line, our walkthrough makes this process straightforward and accessible.
 
 Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, producing a comprehensive AnnData object that packages your cell-level features, masks, spatial coordinates, and marker intensities — all ready for analysis. If you don’t already have segmentation masks, Unhuddle can optionally generate them for you using DeepCell-Mesmer, enabling a truly end-to-end experience.
-
-<!-- Table of Contents -->
-## Table of Contents
-- [Link text](#getting-started)
-- [Clone the Repository](#clone-the-repository)
-- [Set Up a Virtual Environment](#set-up-a-virtual-environment)
-- [Install UNHUDDLE in Editable Mode](#install-unhuddle-in-editable-mode)
-- [Verify Installation](#verify-installation)
-- [Run the Pipeline on Included Demo Data](#run-the-pipeline-on-included-demo-data)
-- [DeepCell-Mesmer Integration](#deepcell-mesmer-integration)
-- [Pipeline Overview](#pipeline-overview)
-- [FAQ](#faq)
-
----
 
 
 ### 🔧 **Preprocessing Your Raw Images**
@@ -148,7 +150,7 @@ Once your data is preprocessed, Unhuddle takes care of the rest — integrating 
 
 ---
 
-# 🚀 Getting Started
+# 🚀 Getting Started with the tutorial
 
 ## 📥 1. Clone the Repository
 via https
