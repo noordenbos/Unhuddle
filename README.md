@@ -208,6 +208,8 @@ $HOME/tools/geckodriver
 export PATH="$HOME/tools:$PATH"
 ```
 
+[← Back to Table of Contents](#quicklinks)
+
 </details>
 
 
@@ -318,6 +320,7 @@ $HOME/tools/geckodriver --version
 
 </details>
 
+[← Back to Table of Contents](#quicklinks)
 
 ---
 
