@@ -396,7 +396,7 @@ $HOME/tools/geckodriver --version
 <details>
 <summary>🎯 𝗣𝗿𝗼 𝗧𝗶𝗽: Download Additional Demo Data for Testing of the Denoiser (click to expand)</summary>
 
-<a name="download-data"></a>
+#### Download data
 
 The following commands will automatically download and unpack all available demo FOVs into `demodata/{FOV}` using the latest GitHub release (1.5GB after expansion).
 
