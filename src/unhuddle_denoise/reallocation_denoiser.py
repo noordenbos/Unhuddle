@@ -103,7 +103,7 @@ def save_signal_noise_qc_from_df(
 
         # Compute shared Y-axis limits (combined intensity and residuals)
         combined_values = np.concatenate([inten, residuals])
-        y_lo, y_hi = np.percentile(combined_values, [1, 99])
+        y_lo, y_hi = np.percentile(combined_values, [1, 99.99])
         if np.isclose(y_lo, y_hi):
             y_lo -= 0.5
             y_hi += 0.5
