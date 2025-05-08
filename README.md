@@ -331,7 +331,7 @@ $HOME/tools/geckodriver --version
 
 
 <details open>
-<summary>🎯 𝗣𝗿𝗼 𝗧𝗶𝗽: Download Additional Demo Data for Testing of the Denoiser (click to expand)</summary>
+<summary>🎯 𝗣𝗿𝗼 𝗧𝗶𝗽: Download Additional Demo Data for Testing of the Denoiser</summary>
 
 #### Download data
 
