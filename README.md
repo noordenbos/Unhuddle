@@ -31,16 +31,13 @@ Once preprocessed, Unhuddle seamlessly integrates morphometrics, reallocation mo
 ---
 
 <!-- Table of Contents -->
-#### Table of Contents
+#### Quicklinks
 - [Introduction](#introduction)
 - [Tutorial](#-getting-started-with-the-tutorial)
 - [Run the pipeline](#-5-run-the-pipeline-on-included-demo-data)
 - [Run pipeline on your own data](#-ready-for-your-own-data)
 - [Extra information on the pipeline modules](#%EF%B8%8F-pipeline-overview)
 - [FAQ](#-faq-for-new-users)  
-<br>
-Quicklinks:
-
 - [PENGUIN streamlit app](#streamlit-anchor)
 - [download additional data](#download-data)
 - [Install additional dependancies webloader for DeepCell-Mesmer Integration](#-6-deepcell-mesmer-integration-if-you-have-your-own-masks-you-can-skip-this-step)
@@ -551,7 +548,7 @@ AnnData object with n_obs × n_vars = 134299 × 39
 
 </details>  
 
-[← Back to Table of Contents](#table-of-contents)
+[← Back to Table of Contents](#quicklinks)
 
 ---
 
@@ -611,7 +608,7 @@ base_path/
 9. Proceed to phenotyping using your preferred method. Use the Jupyter notebook file to load the phenotypes as obs in your adata object and make use of the random forest classifier to classify your 'hard to classify' cells! Add your metadata and your other omic data. Render additional QC images and explore your data!
 10. Not a pro in Scanpy and adata for analysis and visualization? The attached notebook will guide you to print a comprehensive summary of your adata object that can be interpreted by your favorite LLM. As your LLM is now aware of how to link all data, you can just instruct the chatbot in plain language your needs and it will give you Jupyter notebook snippets to project features on your dimension reduction plot, render tissue images color-coded for the various cell types, perform group comparisons, etc. Happy sciencing!
 
-[← Back to Table of Contents](#table-of-contents)
+[← Back to Table of Contents](#quicklinks)
 
 ---
 
@@ -1007,7 +1004,7 @@ sudo apt update && sudo apt install python3 python3-pip
 sudo dnf install python3
 ```
 
-[← Back to Table of Contents](#table-of-contents)
+[← Back to Table of Contents](#quicklinks)
 
 ---
 
@@ -1032,7 +1029,7 @@ sudo apt update && sudo apt install git
 sudo dnf install git
 ```
 
-[← Back to Table of Contents](#table-of-contents)
+[← Back to Table of Contents](#quicklinks)
 
 ---
 
@@ -1049,7 +1046,7 @@ Linux: Use your default Terminal app, often found via the system menu or with th
 
 We currently provide a command-line interface (CLI) because it's the most flexible, scalable, and automation-friendly format for researchers working with complex datasets. A graphical user interface (GUI) may follow in the future.
 
-[← Back to Table of Contents](#table-of-contents)
+[← Back to Table of Contents](#quicklinks)
 
 ---
 
@@ -1063,7 +1060,7 @@ We currently provide a command-line interface (CLI) because it's the most flexib
 
 That way, you're always in control — and learning while using the tools safely.
 
-[← Back to Table of Contents](#table-of-contents)
+[← Back to Table of Contents](#quicklinks)
 
 ---
 
