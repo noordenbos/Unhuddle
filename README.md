@@ -393,7 +393,7 @@ $HOME/tools/geckodriver --version
 ## 🚀 7. Get more out of the data with Unhuddle extensions
 
 
-<details>
+<details open>
 <summary>🎯 𝗣𝗿𝗼 𝗧𝗶𝗽: Download Additional Demo Data for Testing of the Denoiser (click to expand)</summary>
 
 #### Download data
