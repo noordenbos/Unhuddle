@@ -5,20 +5,6 @@
 
 **Uncovering Neighborhood Heterogeneity Using Deterministic Normalization and Local Equilibrium**
 
-
-<!-- Table of Contents -->
-### Table of Contents
-- [Introduction](#-introduction)
-- [Tutorial](#-getting-started-with-the-tutorial)
-- [Run the Pipeline](#run-the-pipeline-on-included-demo-data)
-- [DeepCell-Mesmer Integration](#deepcell-mesmer-integration)
-- [Pipeline Overview](#pipeline-overview)
-- [FAQ](#faq)
-- [PENGUIN streamlit app](#)
-- [download additional data](#)
-
----
-
 ## Introduction
 
 <br>UNHUDDLE is an algorithm designed to resolve signal in densely packed tissue regions — or "cell huddles" — in multiplex spatial proteomics, where traditional absolute segmentation introduces 'neighbor noise' and blur the phenotypic signal.
@@ -34,7 +20,32 @@ Unhuddle values are normalized by average phenotype marker expression, defending
 
 The Unhuddle pipeline is built to empower all curious scientists — whether you're a coding pro or just getting started. While you’ll need to install Python and interact with the command line, our walkthrough makes this process straightforward and accessible.
 
-Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, producing a comprehensive AnnData object that packages your cell-level features, masks, spatial coordinates, and marker intensities — all ready for analysis. If you don’t already have segmentation masks, Unhuddle can optionally generate them for you using DeepCell-Mesmer, enabling a truly end-to-end experience.
+Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, producing a comprehensive AnnData object that packages your cell-level features, masks, spatial coordinates, and marker intensities — all ready for analysis. If you don’t have segmentation masks yet, Unhuddle can optionally generate them using the third-party tool DeepCell-Mesmer, enabling a truly end-to-end experience. Quick preprocessing can be handled within this repository through PENGUIN, streamlining your data preparation before entering the main pipeline.
+
+Once preprocessed, Unhuddle seamlessly integrates morphometrics, reallocation models, functional normalization, and quality control in one modular framework. The resulting AnnData object is extendable with custom metadata or omics layers and remains fully compatible with Scanpy and SpaceCat workflows. Example Jupyter notebooks are provided to guide you through downstream analyses and visualizations, making it easy to explore your data.
+
+<p align="center">
+  <img src="assets/images/unhuddle_pipeline_final.png" alt="Unhuddle Pipeline" width="1100"/>
+</p>
+
+---
+
+<!-- Table of Contents -->
+#### Table of Contents
+- [Introduction](#introduction)
+- [Tutorial](#-getting-started-with-the-tutorial)
+- [Run the pipeline](#-5-run-the-pipeline-on-included-demo-data)
+- [Run pipeline on your own data](#-ready-for-your-own-data)
+- [Extra information on the pipeline modules](#%EF%B8%8F-pipeline-overview)
+- [FAQ](#-faq-for-new-users)  
+<br>
+Quicklinks:
+
+- [PENGUIN streamlit app](#streamlit-anchor)
+- [download additional data](#download-data)
+- [Install additional dependancies webloader for DeepCell-Mesmer Integration](#-6-deepcell-mesmer-integration-if-you-have-your-own-masks-you-can-skip-this-step)
+
+---
 
 
 ### 🔧 **Preprocessing Your Raw Images**
@@ -60,6 +71,8 @@ Before running UNHUDDLE, we **highly recommend** some minimal pixel-level prepro
 <details>
 <summary><strong>🧪 Launch the Streamlit version of PENGUIN</strong></summary>
 
+<a name="streamlit-anchor"></a>
+  
 #### 🔁 Step-by-step (Mac/Linux/Windows)
 
 Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2024). PENGUIN: A rapid and efficient image preprocessing tool for multiplexed spatial proteomics. bioRxiv, 2024-07. doi: https://doi.org/10.1101/2024.07.01.601513
@@ -140,13 +153,7 @@ Remove-Item -Recurse -Force demodata-raw -ErrorAction Ignore; New-Item -ItemType
 
 </details>
 
-Once your data is preprocessed, Unhuddle takes care of the rest — integrating morphometrics, reallocation models, functional normalization, and quality control in one modular framework. The resulting AnnData object can be extended with your own metadata or omics layers and is fully compatible with Scanpy and SpaceCat workflows. We've included example Jupyter notebooks to help you dive into downstream analyses and visualizations.
 
-<p align="center">
-  <img src="assets/images/unhuddle_pipeline_final.png" alt="Unhuddle Pipeline" width="1100"/>
-</p>
-
----
 
 ---
 
@@ -392,6 +399,8 @@ $HOME/tools/geckodriver --version
 <details>
 <summary>🎯 𝗣𝗿𝗼 𝗧𝗶𝗽: Download Additional Demo Data for Testing of the Denoiser (click to expand)</summary>
 
+<a name="download-data"></a>
+
 The following commands will automatically download and unpack all available demo FOVs into `demodata/{FOV}` using the latest GitHub release (1.5GB after expansion).
 
 #### 🐧 Linux / macOS / WSL
@@ -506,7 +515,6 @@ QC/
     ├── original_cohort_marker_qc.csv
     ├── unhuddle_cohort_marker_qc.csv
     └── denoised_cohort_marker_qc.csv
-
 ```  
 </details>  
 
@@ -540,9 +548,10 @@ AnnData object with n_obs × n_vars = 134299 × 39
     obsm: 'X_spatial', 'X_tsne'
     layers: 'ExclMem_Sum', 'sum_original', 'sum_unhuddle', 'sum_unhuddle_denoised'
 ```
-  
+
 </details>  
 
+[← Back to Table of Contents](#table-of-contents)
 
 ---
 
@@ -600,7 +609,7 @@ base_path/
 9. Proceed to phenotyping using your preferred method. Use the Jupyter notebook file to load the phenotypes as obs in your adata object and make use of the random forest classifier to classify your 'hard to classify' cells! Add your metadata and your other omic data. Render additional QC images and explore your data!
 10. Not a pro in Scanpy and adata for analysis and visualization? The attached notebook will guide you to print a comprehensive summary of your adata object that can be interpreted by your favorite LLM. As your LLM is now aware of how to link all data, you can just instruct the chatbot in plain language your needs and it will give you Jupyter notebook snippets to project features on your dimension reduction plot, render tissue images color-coded for the various cell types, perform group comparisons, etc. Happy sciencing!
 
-
+[← Back to Table of Contents](#table-of-contents)
 
 ---
 
@@ -996,6 +1005,8 @@ sudo apt update && sudo apt install python3 python3-pip
 sudo dnf install python3
 ```
 
+[← Back to Table of Contents](#table-of-contents)
+
 ---
 
 ### **Q2. I don’t have Git installed. Where can I get it?**
@@ -1019,6 +1030,8 @@ sudo apt update && sudo apt install git
 sudo dnf install git
 ```
 
+[← Back to Table of Contents](#table-of-contents)
+
 ---
 
 **Q3. What do you mean with command line and why is there no graphical user interface?**  
@@ -1034,6 +1047,8 @@ Linux: Use your default Terminal app, often found via the system menu or with th
 
 We currently provide a command-line interface (CLI) because it's the most flexible, scalable, and automation-friendly format for researchers working with complex datasets. A graphical user interface (GUI) may follow in the future.
 
+[← Back to Table of Contents](#table-of-contents)
+
 ---
 
 **Q4. I heard command line usage is powerful and dangerous for people that have no formal training in this?**  
@@ -1045,6 +1060,8 @@ We currently provide a command-line interface (CLI) because it's the most flexib
 “Can you explain what this command does?”
 
 That way, you're always in control — and learning while using the tools safely.
+
+[← Back to Table of Contents](#table-of-contents)
 
 ---
 
