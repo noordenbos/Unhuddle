@@ -331,7 +331,7 @@ $HOME/tools/geckodriver --version
 
 
 <details open>
-<summary>🎯 𝗣𝗿𝗼 𝗧𝗶𝗽: Download Additional Demo Data for Testing of the Denoiser</summary>
+<summary><h3>Download Additional Demo Data for Testing of the Denoiser</h3></summary>
 
 #### Download data
 
@@ -347,10 +347,8 @@ The following commands will automatically download and unpack all available demo
 if (Test-Path "demodata" -and Test-Path "README.md") { Write-Host "Cleaning demodata..."; Remove-Item -Recurse -Force demodata }; New-Item -ItemType Directory -Path "demodata" -Force | Out-Null; (Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle_demodata/releases/latest).assets | Where-Object { $_.name -like "*.tar.gz" } | ForEach-Object { $url = $_.browser_download_url; $fov = [IO.Path]::GetFileNameWithoutExtension($_.name); Invoke-WebRequest -Uri $url -OutFile "$fov.tar.gz"; New-Item -ItemType Directory -Path "demodata\$fov" -Force | Out-Null; tar -xzf "$fov.tar.gz" -C "demodata\$fov" --strip-components=1; Remove-Item "$fov.tar.gz" }
 ```
 
-📂 The extended demodate set contains 134k cells, which allows you to rerun the UNHUDDLE pipeline with the `--use_denoise` flag
-tip: set a new outputfolder to not confuse with earlier runs.  
-Linux/MacOS: `--output_base_path results/unhuddle_extended_output`  
-Windows: `--output_base_path results\unhuddle_extended_output` 
+📂 The extended demodate set contains 134k cells, which allows you to rerun the UNHUDDLE pipeline with the `--use_denoise` flag.  
+(tip you can now collapse this section)
 
 [← Back to Table of Contents](#quicklinks)
 
@@ -359,9 +357,12 @@ Windows: `--output_base_path results\unhuddle_extended_output`
 ---
 
 
-**Test the extensions on the demodata**
-- If you've downloaded the additional demodata add these lines to the call (step 6), NB it will run with a fresh output folder `results_extended`:  
-(make sure all your lines, but the last have a continuation indicator: `\`, for windows change to ` )  
+### Test the extensions on the demodata
+- If you've downloaded the additional demodata add these lines to the call (see step 5). NB output will now be in `results_extended`.  
+(tip: compile call in a texteditor and make sure all your lines -but the last- have a continuation indicator: `\`, for windows change to ` )
+
+[← Check the command in Step 5](#-5-run-the-pipeline-on-included-demo-data)
+
 ```bash
 --output_base_path results_extended \
 --use_denoise \
@@ -370,15 +371,12 @@ Windows: `--output_base_path results\unhuddle_extended_output`
 ```
 
 
-- If Firefox + GeckoDriver are installed add these lines to the call (step 6), nb extended demodata not needed:  
+- If Firefox + GeckoDriver are installed add these lines to the call (see step 5), nb extended demodata not needed:  
 (make sure all your lines, but the last have a continuation indicator: `\`, for windows change to ` )
 ```bash
 --create_deepcell_mask \
 --geckodriver_path /path/to/your/geckodriver
 ``` 
-
-
-
 
 
 ---
@@ -528,7 +526,7 @@ base_path/
 ```
 ## Reuse the command from step 5 for your real data!
 
-[← Back to Step 5](#-5-run-the-pipeline-on-included-demo-data)
+[← Check the command in Step 5](#-5-run-the-pipeline-on-included-demo-data)
 
 1. Replace `--base_path demodata` with the actual path to your folder containing `{FOV}\` subdirectories.
 2. Replace `--output_base_path` with a fresh folder output name.
