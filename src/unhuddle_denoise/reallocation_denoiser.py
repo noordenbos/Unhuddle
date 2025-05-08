@@ -18,6 +18,7 @@ import os
 import logging
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.patches as patches
 from matplotlib.backends.backend_pdf import PdfPages
 from sklearn.linear_model import LinearRegression
 
@@ -26,178 +27,129 @@ def save_signal_noise_qc_from_df(
     markers: list[str],
     metadata: dict[str, dict],
     output_pdf: str = "signal_noise_qc.pdf",
-    output_png_dir: str = "signal_noise_qc_pngs",
+    output_png: str = "signal_noise_qc.png",
     morph_col: str = "Area",
     layer_suffix: str = "_ExclusionMembrane_Sum_Intensity",
-    anchor_x: float = 15,
-    anchor_y: float = 0,
     cols: int = 2,
+    signal_q_low: float = 98,
+    signal_q_high: float = 99.9,
 ) -> None:
-    """
-    Generate QC plots for noise-based regression and residuals per marker,
-    using precomputed metadata. The residual scatter determines axis limits.
-    """
     logger = logging.getLogger("unhuddle")
     logger.info("📊 Starting noise QC plotting for %d markers...", len(markers))
 
-    os.makedirs(output_png_dir, exist_ok=True)
     n_rows = int(np.ceil(len(markers) / cols))
+    fig, axs = plt.subplots(n_rows, cols * 2, figsize=(cols * 10, n_rows * 5), dpi=150)
+    axs = axs.flatten()
 
-    # —— COMBINED PDF ——
-    with PdfPages(output_pdf) as pdf:
-        fig, axs = plt.subplots(n_rows, cols * 2,
-                                figsize=(cols * 5, n_rows * 5),
-                                dpi=150)
-        axs = axs.flatten()
-
-        for idx, marker in enumerate(markers):
-            fit_ax   = axs[2 * idx]
-            resid_ax = axs[2 * idx + 1]
-            colname  = f"{marker}{layer_suffix}"
-            meta     = metadata.get(marker, {})
-
-            # Validate inputs
-            if colname not in df.columns or morph_col not in df.columns or not meta:
-                fit_ax.text(0.5, 0.5, "No data", ha='center', va='center',
-                            transform=fit_ax.transAxes)
-                resid_ax.axis('off')
-                continue
-
-            area    = df[morph_col].values
-            inten   = df[colname].values
-            denoise = df[f"{marker}_ExclusionMembrane_Sum_Intensity"].values
-
-            # Fit plot: scatter raw
-            mask    = area >= anchor_x
-            area_f  = area[mask]; inten_f = inten[mask]
-            fit_ax.scatter(area_f, inten_f, color='blue', alpha=0.3, s=5)
-
-            # Plot noise slope line
-            xs = np.linspace(area.min(), area.max(), 200)
-            ys = meta["noise_slope"] * (xs - anchor_x) + anchor_y
-            fit_ax.plot(xs, ys, color='green', lw=2, label="Noise fit")
-
-            # Plot intensity cutoff
-            x_cut = meta["morph_cutoff"]
-            fit_ax.axvline(x_cut, linestyle='--', color='red',
-                           label="intensity cutoff")
-
-            # Optional area-correction
-            gamma = meta.get("area_reg_coef", np.nan)
-            intercept_area = meta.get("area_reg_intercept", np.nan)
-            if not np.isnan(gamma):
-                ya = gamma * xs + intercept_area
-                fit_ax.plot(xs, ya, color='purple', lw=1, linestyle=':',
-                            label="Area correction")
-
-            fit_ax.set_title(marker)
-            fit_ax.set_xlabel(morph_col)
-            fit_ax.set_ylabel("Intensity")
-            fit_ax.legend(fontsize=6)
-
-            # Residual plot
-            resid_ax.scatter(area, denoise, color='blue', alpha=0.3, s=5)
-            resid_ax.axhline(0, color='red', linestyle='--')
-
-            # Determine axis limits from residuals
-            x_min, x_max = area.min(), area.max()
-            y_lo, y_hi   = np.percentile(denoise, [1, 99])
-            if np.isclose(y_lo, y_hi):
-                y_lo -= 0.5; y_hi += 0.5
-
-            resid_ax.set_xlim(x_min, x_max)
-            resid_ax.set_ylim(y_lo * 1.1, y_hi * 1.1)
-
-            # Mirror limits on fit plot
-            fit_ax.set_xlim(x_min, x_max)
-            fit_ax.set_ylim(y_lo * 1.1, y_hi * 1.1)
-
-        # Hide extra axes
-        total = 2 * len(markers)
-        for j in range(total, len(axs)):
-            axs[j].axis('off')
-
-        plt.tight_layout()
-        pdf.savefig(fig, bbox_inches='tight')
-        plt.close(fig)
-
-    logger.info("✅ QC PDF saved to %s", output_pdf)
-
-    # —— INDIVIDUAL PNGs ——
-    for marker in markers:
-        fig, (fit_ax, resid_ax) = plt.subplots(1, 2, figsize=(10, 5), dpi=150)
+    for idx, marker in enumerate(markers):
+        fit_ax = axs[2 * idx]
+        resid_ax = axs[2 * idx + 1]
         colname = f"{marker}{layer_suffix}"
-        meta    = metadata.get(marker, {})
+        meta = metadata.get(marker, {})
 
         if colname not in df.columns or morph_col not in df.columns or not meta:
-            fit_ax.text(0.5, 0.5, "No data", ha='center', va='center',
-                        transform=fit_ax.transAxes)
+            fit_ax.text(0.5, 0.5, "No data", ha='center', va='center', transform=fit_ax.transAxes)
             resid_ax.axis('off')
+            continue
+
+        # Extract metadata explicitly
+        anchor_x = meta.get("anchor_x", 0)
+        anchor_y = meta.get("anchor_y", 0)
+        noise_slope = meta["noise_slope"]
+        morph_cutoff = meta["morph_cutoff"]
+        noise_q = meta["noise_q"]
+
+        area = df[morph_col].values
+        inten = df[colname].values
+
+        # Calculate noise fit and residuals explicitly
+        noise_fit = np.where(area > anchor_x, noise_slope * (area - anchor_x) + anchor_y, 0)
+        residuals = inten - noise_fit
+
+        # Define masks
+        area_above_cutoff = area > morph_cutoff
+        if np.sum(area_above_cutoff) == 0:
+            noise_mask = np.zeros_like(area, dtype=bool)
         else:
-            area    = df[morph_col].values
-            inten   = df[colname].values
-            denoise = df[f"{marker}_ExclusionMembrane_Sum_Intensity"].values
+            intensity_threshold = np.percentile(inten[area_above_cutoff], noise_q)
+            noise_mask = area_above_cutoff & (inten <= intensity_threshold)
 
-            # Fit plot
-            mask    = area >= anchor_x
-            area_f  = area[mask]; inten_f = inten[mask]
-            fit_ax.scatter(area_f, inten_f, color='blue', alpha=0.3, s=5)
+        signal_mask = (inten > np.percentile(inten, signal_q_low)) & (inten < np.percentile(inten, signal_q_high))
 
-            xs = np.linspace(area.min(), area.max(), 200)
-            ys = meta["noise_slope"] * (xs - anchor_x) + anchor_y
-            fit_ax.plot(xs, ys, color='green', lw=2)
-            fit_ax.axvline(meta["morph_cutoff"], linestyle='--', color='red')
+        # Plot intensity vs area
+        fit_ax.scatter(area, inten, color='lightgrey', alpha=0.3, s=5, label='All points')
+        fit_ax.scatter(area[noise_mask], inten[noise_mask], color='blue', alpha=0.5, s=5, label='Noise points')
+        fit_ax.scatter(area[signal_mask], inten[signal_mask], color='orange', alpha=0.7, s=5, label='Signal points')
 
-            gamma = meta.get("area_reg_coef", np.nan)
-            intercept_area = meta.get("area_reg_intercept", np.nan)
-            if not np.isnan(gamma):
-                ya = gamma * xs + intercept_area
-                fit_ax.plot(xs, ya, color='purple', lw=1, linestyle=':')
+        # Plot noise line
+        xs = np.linspace(area.min(), area.max(), 200)
+        ys_noise = np.where(xs > anchor_x, noise_slope * (xs - anchor_x) + anchor_y, 0)
+        fit_ax.plot(xs, ys_noise, color='green', lw=2, label="Noise fit")
 
-            fit_ax.set_title(marker)
-            fit_ax.set_xlabel(morph_col)
-            fit_ax.set_ylabel("Intensity")
+        # Fit and plot signal line
+        x_signal = area[signal_mask]
+        y_signal = inten[signal_mask]
+        if len(x_signal) < 10:
+            logger.warning(f"⚠️ Skipping {marker}: too few signal points")
+            continue
 
-            # Residual plot
-            resid_ax.scatter(area, denoise, color='blue', alpha=0.3, s=5)
-            resid_ax.axhline(0, color='red', linestyle='--')
+        signal_fit = LinearRegression(fit_intercept=False).fit((x_signal - 10).reshape(-1, 1), y_signal)
+        signal_slope = float(signal_fit.coef_[0])
+        ys_signal = signal_slope * (xs - 10)
+        fit_ax.plot(xs, ys_signal, color='red', lw=2, label=f"Signal fit (slope={signal_slope:.2f})")
 
-            # Determine axis limits from residuals
-            x_min, x_max = area.min(), area.max()
-            y_lo, y_hi = np.percentile(denoise, [1, 99])
+        # Plot cutoff line
+        fit_ax.axvline(morph_cutoff, linestyle='--', color='purple', label="Morph cutoff")
 
-            # Explicit padding (5% of the data range)
-            padding_x = 0.05 * (x_max - x_min)
-            padding_y = 0.05 * (y_hi - y_lo)
+        # Compute shared Y-axis limits (combined intensity and residuals)
+        combined_values = np.concatenate([inten, residuals])
+        y_lo, y_hi = np.percentile(combined_values, [1, 99])
+        if np.isclose(y_lo, y_hi):
+            y_lo -= 0.5
+            y_hi += 0.5
+        y_margin = (y_hi - y_lo) * 0.1
+        y_lo -= y_margin
+        y_hi += y_margin
 
-            # Avoid collapse if the range is too narrow
-            if np.isclose(y_lo, y_hi) or (y_hi - y_lo) < 1e-2:
-                y_lo -= 0.5
-                y_hi += 0.5
+        # Set shared Y-axis limits
+        fit_ax.set_ylim(y_lo, y_hi)
+        resid_ax.set_ylim(y_lo, y_hi)
 
-            # Apply padding explicitly
-            x_min_padded = x_min - padding_x
-            x_max_padded = x_max + padding_x
-            y_lo -= padding_y
-            y_hi += padding_y
+        # Add grey rectangle for noise estimation area (after setting ylim)
+        fit_ax.add_patch(patches.Rectangle((morph_cutoff, y_lo),
+                                           fit_ax.get_xlim()[1] - morph_cutoff,
+                                           y_hi - y_lo,
+                                           color='lightgrey', alpha=0.2))
 
-            # Soft left-side padding
-            if x_min_padded < 0:
-                # If padding goes negative, we cap it at a small visible margin
-                x_min_padded = -0.05 * x_max
+        fit_ax.set_title(f"{marker} Intensity vs {morph_col}")
+        fit_ax.set_xlabel(morph_col)
+        fit_ax.set_ylabel("Intensity")
+        fit_ax.legend(fontsize=6)
 
-            # Set the limits
-            resid_ax.set_xlim(x_min_padded, x_max_padded)
-            resid_ax.set_ylim(y_lo, y_hi)
-            fit_ax.set_xlim(x_min_padded, x_max_padded)
-            fit_ax.set_ylim(y_lo, y_hi)
+        # Plot residuals (all points blue)
+        resid_ax.scatter(area, residuals, color='blue', alpha=0.5, s=5, label='Residuals')
+        resid_ax.axhline(0, color='red', linestyle='--')
 
-        png_path = os.path.join(output_png_dir, f"{marker}_qc.png")
-        fig.savefig(png_path, bbox_inches='tight')
-        plt.close(fig)
-        logger.info("🖼️ Saved %s", png_path)
+        resid_ax.set_xlim(area.min(), area.max())
+        resid_ax.set_title(f"{marker} Residuals")
+        resid_ax.set_xlabel(morph_col)
+        resid_ax.set_ylabel("Residual Intensity")
+        resid_ax.legend(fontsize=6)
 
-    logger.info("✅ QC PNGs saved to %s", output_png_dir)
+    # Hide unused axes
+    for j in range(2 * len(markers), len(axs)):
+        axs[j].axis('off')
+
+    plt.tight_layout()
+
+    # Save plots
+    with PdfPages(output_pdf) as pdf:
+        pdf.savefig(fig, bbox_inches='tight')
+    logger.info("✅ QC PDF saved to %s", output_pdf)
+
+    fig.savefig(output_png, bbox_inches='tight', dpi=150)
+    plt.close(fig)
+    logger.info("✅ QC PNG saved to %s", output_png)
 
 
 
@@ -216,13 +168,14 @@ def run_denoising_pipeline_on_dataframe(
     markers: list[str],
     morph_col: str = "Area",
     layer_suffix: str = "_ExclusionMembrane_Sum_Intensity",
-    anchor_x: float = 15,
+    anchor_x: float = 0,
     anchor_y: float = 0,
-    sd_multiplier: float = 3,
+    sd_multiplier: float = 2.5,
     signal_q_low: float = 95,
     signal_q_high: float = 99.99,
     min_cells_per_bin: int = 10,
     min_area: float = 15,
+    noise_q: float = 95,  # <-- new parameter added here
 ) -> dict:
     """
     Denoise intensity values per marker using a noise-based regression approach.
@@ -237,11 +190,11 @@ def run_denoising_pipeline_on_dataframe(
     - signal_q_low, signal_q_high: Quantiles for selecting signal-range residuals.
     - min_cells_per_bin: Minimum cells required for regression.
     - min_area: Minimum morphological value to include.
+    - noise_q: Percentile cutoff for selecting noise points (default 95).
 
     Returns:
     - dict with 'denoised_df' (DataFrame) and 'metadata' (per-marker info).
     """
-    # Prepare morphological values (clipped by min_area)
     morph_vals = np.clip(df[morph_col].values, min_area, None)
     denoised_df = df.copy()
     metadata = {}
@@ -251,17 +204,14 @@ def run_denoising_pipeline_on_dataframe(
         if intensity_col not in df.columns:
             continue
 
-        # 🚀 Step 1: Extract arrays directly from the DataFrame
         intensity = df[intensity_col].to_numpy(dtype=float)
-        morph = morph_vals  # should already be a numpy array
+        morph = morph_vals
 
-        # 🚀 Step 2: Apply the valid mask (no DataFrame, just NumPy)
         valid_mask = (morph >= min_area) & (intensity > 0)
         area_filt = morph[valid_mask]
         inten_filt = intensity[valid_mask]
 
         if len(area_filt) < min_cells_per_bin:
-            # Fill with zeros if not enough cells
             denoised_df[f"{marker}_ExclusionMembrane_FinalDenoised_Intensity"] = np.zeros_like(intensity)
             metadata[marker] = {
                 "morph_col": morph_col,
@@ -269,33 +219,34 @@ def run_denoising_pipeline_on_dataframe(
                 "noise_slope": np.nan,
                 "anchor_x": anchor_x,
                 "anchor_y": anchor_y,
-                "area_reg_coef": np.nan,
-                "area_reg_intercept": np.nan
+                "noise_q": noise_q,
             }
             continue
 
-        # 🚀 Step 3: Compute the **intensity-based cutoff**
-        # Sort by intensity, get corresponding morph values
         sort_idx = np.argsort(inten_filt)
         sorted_area = area_filt[sort_idx]
 
-        # Compute the cutoff (mean + 3*SD) only on the sorted area values
         morph_mean = np.mean(sorted_area)
         morph_std = np.std(sorted_area)
         morph_cutoff = morph_mean + sd_multiplier * morph_std
 
-        # 🚀 Step 4: Select the points above the cutoff
-        high_mask = sorted_area > morph_cutoff
-
-        if np.sum(high_mask) < min_cells_per_bin:
+        # 🚀 Updated Step: Select points above morph_cutoff first
+        high_morph_mask = area_filt > morph_cutoff
+        if np.sum(high_morph_mask) < min_cells_per_bin:
             noise_slope = 0.0
         else:
-            # 🚀 Step 5: Fit the noise regression (clean and numpy-based)
-            Xn = (sorted_area[high_mask] - anchor_x).reshape(-1, 1)
-            yn = inten_filt[sort_idx][high_mask]
-            noise_slope = float(LinearRegression(fit_intercept=False).fit(Xn, yn).coef_[0])
+            # 🚀 Updated Step: Within high morph points, select bottom noise_q percentile by intensity
+            high_morph_intensities = inten_filt[high_morph_mask]
+            intensity_threshold = np.percentile(high_morph_intensities, noise_q)
+            noise_mask = high_morph_mask & (inten_filt <= intensity_threshold)
 
-        # 🚀 Step 6: Compute noise fit and residuals
+            if np.sum(noise_mask) < min_cells_per_bin:
+                noise_slope = 0.0
+            else:
+                Xn = (area_filt[noise_mask] - anchor_x).reshape(-1, 1)
+                yn = inten_filt[noise_mask]
+                noise_slope = float(LinearRegression(fit_intercept=False).fit(Xn, yn).coef_[0])
+
         noise_fit = np.where(
             morph > anchor_x,
             noise_slope * (morph - anchor_x) + anchor_y,
@@ -305,18 +256,15 @@ def run_denoising_pipeline_on_dataframe(
         residuals = intensity - noise_fit
         residuals_clipped = np.clip(residuals, 0, None)
 
-        # 🚀 Step 7: Save to `denoised_df`
         denoised_df[f"{marker}_ExclusionMembrane_FinalDenoised_Intensity"] = residuals_clipped
 
-        # 🚀 Step 8: Capture metadata
         metadata[marker] = {
             "morph_col": morph_col,
             "morph_cutoff": float(morph_cutoff),
             "noise_slope": noise_slope,
             "anchor_x": anchor_x,
             "anchor_y": anchor_y,
-            "area_reg_coef": np.nan,
-            "area_reg_intercept": np.nan
+            "noise_q": noise_q,
         }
 
     return {"denoised_df": denoised_df, "metadata": metadata}
@@ -398,7 +346,7 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
         markers=markers,
         morph_col=morph_col,
         layer_suffix=layer_suffix,
-        anchor_x=args.signal_anchor_x if hasattr(args, "signal_anchor_x") else 15,
+        anchor_x=args.signal_anchor_x if hasattr(args, "signal_anchor_x") else 0,
         anchor_y=args.signal_anchor_y if hasattr(args, "signal_anchor_y") else 0,
         # you can also pass other args here if desired
     )
@@ -407,13 +355,13 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
 
     # 2) QC plotting (consumes metadata, does NOT re-run fits)
     qc_pdf = os.path.join(qc_out_dir, "denoiser_QC.pdf")
-    qc_png = os.path.join(qc_out_dir, "denoiser_QC_pngs")
+    qc_png = os.path.join(qc_out_dir, "denoiser_QC.png")
     save_signal_noise_qc_from_df(
         df=denoised_df,
         markers=markers,
         metadata=metadata,
         output_pdf=qc_pdf,
-        output_png_dir=qc_png,
+        output_png=qc_png,
         morph_col=morph_col,
         layer_suffix=layer_suffix,
     )
