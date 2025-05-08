@@ -20,6 +20,20 @@ The Unhuddle pipeline is built to empower all curious scientists — whether you
 
 Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, producing a comprehensive AnnData object that packages your cell-level features, masks, spatial coordinates, and marker intensities — all ready for analysis. If you don’t already have segmentation masks, Unhuddle can optionally generate them for you using DeepCell-Mesmer, enabling a truly end-to-end experience.
 
+<!-- Table of Contents -->
+## Table of Contents
+- [Getting Started](#getting-started)  
+  - [Clone the Repository](#clone-the-repository)  
+  - [Set Up a Virtual Environment](#set-up-a-virtual-environment)  
+  - [Install UNHUDDLE in Editable Mode](#install-unhuddle-in-editable-mode)  
+  - [Verify Installation](#verify-installation)  
+  - [Run the Pipeline on Included Demo Data](#run-the-pipeline-on-included-demo-data)  
+- [DeepCell-Mesmer Integration](#deepcell-mesmer-integration)  
+- [Pipeline Overview](#pipeline-overview)  
+- [FAQ](#faq)
+
+---
+
 ### 🔧 **Preprocessing Your Raw Images**
 
 Before running UNHUDDLE, we **highly recommend** some minimal pixel-level preprocessing of your raw `.ome.tiff` images. At a minimum, preprocessing should include:
