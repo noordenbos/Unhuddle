@@ -52,6 +52,9 @@ Before running UNHUDDLE, we **highly recommend** some minimal pixel-level prepro
 - ✅ 99th highest percentile clipping (removal of oversaturated pixels)  
 - ✅ Background subtraction
 
+You can use the convenient streamlit app shipped with this repository:
+
+[PENGUIN streamlit app](#streamlit-anchor)
 
 <details>
 <summary>Several open-source tools are available to help with IMC/MIBI data for this (click to expand):</summary>
@@ -62,81 +65,6 @@ Before running UNHUDDLE, we **highly recommend** some minimal pixel-level prepro
 
 - A user-friendly graphical interface for preprocessing multiplexed tissue images
 - Available as a packaged Streamlit app **integrated in UNHUDDLE** (or use the jupyter notebook widget version on the 🔗  [PENGUIN](https://github.com/deMirandaLab/PENGUIN) github)
-
-
-
-<details>
-<summary><strong>🧪 Launch the Streamlit version of PENGUIN</strong></summary>
-
-<a name="streamlit-anchor"></a>
-  
-#### 🔁 Step-by-step (Mac/Linux/Windows)
-
-Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2024). PENGUIN: A rapid and efficient image preprocessing tool for multiplexed spatial proteomics. bioRxiv, 2024-07. doi: https://doi.org/10.1101/2024.07.01.601513
-1. **Clone the Repository** (this is the same step as STEP 1 from the main flow, there is no need to clone twice)  
-    - via https:
-        ```bash
-        git clone https://github.com/tbee05/unhuddle_denoise.git
-        cd unhuddle_denoise
-        ```
-    - or via ssh:
-        ```powershell
-        git clone git@github.com:tbee05/unhuddle_denoise.git
-        cd unhuddle_denoise
-        ```
-        
-2. **Create a virtual environment** (make a dedicated environment for penguin)
-    ```bash
-    python -m venv .venv_penguin
-    ```
-
-3. **Activate it**
-    - On macOS/Linux:
-        ```bash
-        source .venv_penguin/bin/activate
-        ```
-    - On Windows:
-        ```powershell
-        .venv_penguin\Scripts\activate
-        ```
-
-4. **Install requirements**
-    - On macOS/Linux:
-        ```bash
-        pip install -r ./penguin_preprocess/requirements.txt
-        ```
-    - On Windows:
-        ```powershell
-        pip install -r .\penguin_preprocess\requirements.txt
-        ```
-       
-5. **Run the app**
-    ```bash
-    streamlit run app.py
-    ```
-
-
-<details>
-<summary> More raw data images needed to test this Streamlit version of PENGUIN? (expand!)</summary>
-
-
-**Download raw image data** Oneliners that will download and unpack all available raw demo FOVs into `demodata-raw/{FOV}` (1.5GB).
-
-#### 🐧 Linux / macOS / WSL (make sure you are still in the unhuddle base directory!)
-```bash
-rm -rf demodata-raw && mkdir -p demodata-raw && curl -s https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata-raw/$fov && curl -L "$url" -o ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata-raw/$fov --strip-components=1 && rm ${fov}.tar.gz; done
-```
-
-#### 🪟 Windows (PowerShell) (make sure you are still in the unhuddle base directory!)
-```powershell
-Remove-Item -Recurse -Force demodata-raw -ErrorAction Ignore; New-Item -ItemType Directory -Path "demodata-raw" -Force | Out-Null; (Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest).assets | Where-Object { $_.name -like "*.tar.gz" } | ForEach-Object { $url = $_.browser_download_url; $fov = [IO.Path]::GetFileNameWithoutExtension($_.name); Invoke-WebRequest -Uri $url -OutFile "$fov.tar.gz"; New-Item -ItemType Directory -Path "demodata-raw\$fov" -Force | Out-Null; tar -xzf "$fov.tar.gz" -C "demodata-raw\$fov" --strip-components=1; Remove-Item "$fov.tar.gz" }
-```
-
-</details>
-
-
-
-</details>
 
 ---
 
@@ -1063,6 +991,78 @@ That way, you're always in control — and learning while using the tools safely
 [← Back to Table of Contents](#quicklinks)
 
 ---
+
+<details open>
+html<br><details id="streamlit-anchor"><summary><strong>🧪 Launch the Streamlit version of PENGUIN</strong></summary>
+  
+#### 🔁 Step-by-step (Mac/Linux/Windows)
+
+Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2024). PENGUIN: A rapid and efficient image preprocessing tool for multiplexed spatial proteomics. bioRxiv, 2024-07. doi: https://doi.org/10.1101/2024.07.01.601513
+1. **Clone the Repository** (this is the same step as STEP 1 from the main flow, there is no need to clone twice)  
+    - via https:
+        ```bash
+        git clone https://github.com/tbee05/unhuddle_denoise.git
+        cd unhuddle_denoise
+        ```
+    - or via ssh:
+        ```powershell
+        git clone git@github.com:tbee05/unhuddle_denoise.git
+        cd unhuddle_denoise
+        ```
+        
+2. **Create a virtual environment** (make a dedicated environment for penguin)
+    ```bash
+    python -m venv .venv_penguin
+    ```
+
+3. **Activate it**
+    - On macOS/Linux:
+        ```bash
+        source .venv_penguin/bin/activate
+        ```
+    - On Windows:
+        ```powershell
+        .venv_penguin\Scripts\activate
+        ```
+
+4. **Install requirements**
+    - On macOS/Linux:
+        ```bash
+        pip install -r ./penguin_preprocess/requirements.txt
+        ```
+    - On Windows:
+        ```powershell
+        pip install -r .\penguin_preprocess\requirements.txt
+        ```
+       
+5. **Run the app**
+    ```bash
+    streamlit run app.py
+    ```
+
+
+<details open>
+<summary> More raw data images needed to test this Streamlit version of PENGUIN? (expand!)</summary>
+
+
+**Download raw image data** Oneliners that will download and unpack all available raw demo FOVs into `demodata-raw/{FOV}` (1.5GB).
+
+#### 🐧 Linux / macOS / WSL (make sure you are still in the unhuddle base directory!)
+```bash
+rm -rf demodata-raw && mkdir -p demodata-raw && curl -s https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest | grep browser_download_url | grep '.tar.gz"' | cut -d '"' -f 4 | while read -r url; do fov=$(basename "$url" .tar.gz); mkdir -p demodata-raw/$fov && curl -L "$url" -o ${fov}.tar.gz && tar -xzf ${fov}.tar.gz -C demodata-raw/$fov --strip-components=1 && rm ${fov}.tar.gz; done
+```
+
+#### 🪟 Windows (PowerShell) (make sure you are still in the unhuddle base directory!)
+```powershell
+Remove-Item -Recurse -Force demodata-raw -ErrorAction Ignore; New-Item -ItemType Directory -Path "demodata-raw" -Force | Out-Null; (Invoke-RestMethod https://api.github.com/repos/Tbee05/Unhuddle-raw/releases/latest).assets | Where-Object { $_.name -like "*.tar.gz" } | ForEach-Object { $url = $_.browser_download_url; $fov = [IO.Path]::GetFileNameWithoutExtension($_.name); Invoke-WebRequest -Uri $url -OutFile "$fov.tar.gz"; New-Item -ItemType Directory -Path "demodata-raw\$fov" -Force | Out-Null; tar -xzf "$fov.tar.gz" -C "demodata-raw\$fov" --strip-components=1; Remove-Item "$fov.tar.gz" }
+```
+
+</details>
+
+
+
+</details>
+
 
 ## 📊 Coming Soon
 UNHUDDLE will be installable via `pip install unhuddle`
