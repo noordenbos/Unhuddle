@@ -919,7 +919,26 @@ Requires Python 3.8 or higher
 
 ---
 
-### **Q1. I don’t have Python installed. What should I do?**
+<details><summary><h3>Q1. What is the Command Line Interface (CLI) and why should I use it?</h3></summary>
+
+
+➡️ The Command Line Interface (CLI) is a text-based way to interact with your computer. Instead of clicking buttons, you type commands to execute programs and scripts.  
+
+✅ The CLI is ideal for automation, reproducibility, and handling large datasets — it’s like giving your computer direct instructions, making processes faster and more efficient.  
+
+💡 To open the CLI on your system:  
+- **Windows**: Use **Git Bash** (installed with Git), or search for **Command Prompt** or **PowerShell** in the Start menu.  
+- **macOS**: Use the built-in **Terminal** app (via Spotlight or Applications > Utilities).  
+- **Linux**: Use your default **Terminal** app (Ctrl+Alt+T typically opens it).
+
+[← Back to Table of Contents](#quicklinks)
+
+</details>
+
+---
+
+<details><summary><h3>Q2. I don’t have Python installed. What should I do?</h3></summary>
+
 
 ➡️ **Windows:** Download from [python.org/downloads/windows](https://www.python.org/downloads/windows/)  
 ✅ During installation, **check the box “Add Python to PATH.”**
@@ -941,9 +960,12 @@ sudo dnf install python3
 
 [← Back to Table of Contents](#quicklinks)
 
+</details>
+
 ---
 
-### **Q2. I don’t have Git installed. Where can I get it?**
+<details><summary><h3>Q3. I don’t have Git installed. Where can I get it?</h3></summary>
+
 
 ➡️ **Windows:** Install from [git-scm.com/download/win](https://git-scm.com/download/win)  
 ✅ This also installs **Git Bash**, a terminal that supports Linux-style commands.  
@@ -964,11 +986,17 @@ sudo apt update && sudo apt install git
 sudo dnf install git
 ```
 
+
 [← Back to Table of Contents](#quicklinks)
+
+</details>
 
 ---
 
-**Q3. What do you mean with command line and why is there no graphical user interface?**  
+<details><summary><h3>Q4. What do you mean with command line and why is there no graphical user interface?</h3></summary>
+
+
+
 ➡️ The command line (also called terminal or shell) is a text-based interface where you type commands to run software. It allows for automation, reproducibility, and batch processing — essential for scientific data workflows.
 
 ✅ You can find your terminal here:
@@ -981,13 +1009,20 @@ Linux: Use your default Terminal app, often found via the system menu or with th
 
 We currently provide a command-line interface (CLI) because it's the most flexible, scalable, and automation-friendly format for researchers working with complex datasets. A graphical user interface (GUI) may follow in the future.
 
+
 [← Back to Table of Contents](#quicklinks)
+
+</details>
 
 ---
 
-**Q4. I heard command line usage is powerful and dangerous for people that have no formal training in this?**  
+<details><summary><h3>Q5. I heard command line usage is powerful and dangerous for people that have no formal training in this?</h3></summary>
+
+
+
+  
 ➡️ It's true that the command line is powerful — it's used by professionals to automate complex workflows and manage entire systems efficiently. But power doesn't mean danger if you're using trusted commands.  
-✅ The commands in our guides have been carefully written and reviewed to be completely safe. They will not modify or delete anything outside the working folder.  
+✅ The commands in our guides have been carefully written and reviewed to be safe.
 
 🧠 Curious or cautious? You can always paste any command into your favorite AI assistant or chatbot (like ChatGPT, Copilot, etc.) and ask:
 
@@ -996,6 +1031,8 @@ We currently provide a command-line interface (CLI) because it's the most flexib
 That way, you're always in control — and learning while using the tools safely.
 
 [← Back to Table of Contents](#quicklinks)
+
+</details>
 
 ---
 
