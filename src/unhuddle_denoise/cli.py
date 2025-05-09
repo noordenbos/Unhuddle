@@ -129,7 +129,8 @@ def main():
         denoised_summary_path = os.path.join(dirs["QC_metadata_denoised"], "denoised_reallocation_summary.csv")
         compute_denoised_reallocation_factors(
             protein_csv_paths=protein_csv_paths,
-            dirs=dirs
+            dirs=dirs,
+            args=args,
         )
         logger.info(f"✅ Denoised reallocation factors saved to: {denoised_summary_path}")
 

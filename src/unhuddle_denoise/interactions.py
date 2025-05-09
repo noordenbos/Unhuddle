@@ -283,13 +283,13 @@ def settle_debts_from_residuals(
     fov_name = os.path.basename(fov_folder)
     if not isinstance(protein_features.index, pd.MultiIndex):
         protein_features = protein_features.set_index(["FOV", "Label"])
-    residual_cols = [c for c in protein_features.columns if c.endswith("_ExclusionMembrane_Denoised_Intensity")]
-    markers = [c.replace("_ExclusionMembrane_Denoised_Intensity", "") for c in residual_cols]
+    residual_cols = [c for c in protein_features.columns if c.endswith("_ExclusionMembrane_FinalDenoised_Intensity")]
+    markers = [c.replace("_ExclusionMembrane_FinalDenoised_Intensity", "") for c in residual_cols]
 
     for label, d in reallocation.items():
         key = (fov_name, label)
         for m in markers:
-            col = f"{m}_ExclusionMembrane_Denoised_Intensity"
+            col = f"{m}_ExclusionMembrane_FinalDenoised_Intensity"
             if col in protein_features.columns:
                 protein_features.at[key, col] += d["reallocated_intensity"].get(m, 0)
 
@@ -303,7 +303,7 @@ def settle_debts_from_residuals(
 
         key = (fov_name, label)
         for m, value in intensity_dict.items():
-            col = f"{m}_ExclusionMembrane_Denoised_Intensity"
+            col = f"{m}_ExclusionMembrane_FinalDenoised_Intensity"
             if col in protein_features.columns:
                 protein_features.at[key, col] += value
     corrected_df = protein_features.reset_index()[["Label"] + residual_cols]

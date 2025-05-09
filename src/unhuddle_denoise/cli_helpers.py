@@ -183,7 +183,12 @@ def parse_arguments() -> argparse.Namespace:
         default="sensormarker",
         help="Normalization method to use ('area' or 'sensormarker'). Default: sensormarker"
     )
-
+    parser.add_argument(
+        "--denoise_regress",
+        choices=["area", "perimeter"],
+        default="perimeter",
+        help="Regress based on ('area' or 'perimeter'). Default: perimeter"
+    )
 
     return parser.parse_args()
 

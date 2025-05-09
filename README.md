@@ -45,6 +45,20 @@ Once preprocessed, Unhuddle seamlessly integrates morphometrics, reallocation mo
 ---
 
 
+<!-- Table of Contents -->
+## Table of Contents
+- [Getting Started](#getting-started)
+- [Clone the Repository](#clone-the-repository)
+- [Set Up a Virtual Environment](#set-up-a-virtual-environment)
+- [Install UNHUDDLE in Editable Mode](#install-unhuddle-in-editable-mode)
+- [Verify Installation](#verify-installation)
+- [Run the Pipeline on Included Demo Data](#run-the-pipeline-on-included-demo-data)
+- [DeepCell-Mesmer Integration](#deepcell-mesmer-integration)
+- [Pipeline Overview](#pipeline-overview)
+- [FAQ](#faq)
+
+---
+
 ### 🔧 **Preprocessing Your Raw Images**
 
 Before running UNHUDDLE, we **highly recommend** some minimal pixel-level preprocessing of your raw `.ome.tiff` images. At a minimum, preprocessing should include:
@@ -153,6 +167,7 @@ unhuddle-denoise `
   --create_adata
 ```
 
+[← Back to Table of Contents](#table-of-contents)
 
 ## 🌐 6. DeepCell-Mesmer Integration (if you have your own masks, you can skip this step)
 
