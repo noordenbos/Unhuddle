@@ -31,8 +31,8 @@ def save_signal_noise_qc_from_df(
     morph_col: str = "Area",
     layer_suffix: str = "_ExclusionMembrane_Sum_Intensity",
     cols: int = 2,
-    signal_q_low: float = 98,
-    signal_q_high: float = 99.9,
+    signal_q_low: float = 99,
+    signal_q_high: float = 99.99,
 ) -> None:
     logger = logging.getLogger("unhuddle")
     logger.info("📊 Starting noise QC plotting for %d markers...", len(markers))
@@ -96,10 +96,10 @@ def save_signal_noise_qc_from_df(
         signal_fit = LinearRegression(fit_intercept=False).fit((x_signal - 10).reshape(-1, 1), y_signal)
         signal_slope = float(signal_fit.coef_[0])
         ys_signal = signal_slope * (xs - 10)
-        fit_ax.plot(xs, ys_signal, color='red', lw=2, label=f"Signal fit (slope={signal_slope:.2f})")
+        fit_ax.plot(xs, ys_signal, color='red', lw=2, label=f"Signal fit (indicative)")
 
         # Plot cutoff line
-        fit_ax.axvline(morph_cutoff, linestyle='--', color='purple', label="Morph cutoff")
+        fit_ax.axvline(morph_cutoff, linestyle='--', color='purple', label="Noise cutoff")
 
         # Compute shared Y-axis limits (combined intensity and residuals)
         combined_values = np.concatenate([inten, residuals])
