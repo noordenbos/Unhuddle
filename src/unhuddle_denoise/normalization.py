@@ -121,35 +121,45 @@ def apply_cohort_scaling(
             scaled[:, j] = 0.0
             continue
 
-        # 3) Robust or any fallback_* method
-        if (method == "robust" or method.startswith("fallback")) and (p99 > p1):
-            # base scaling with cohort p1/p99
+        # 3️⃣ Robust or Fallback Method Application
+        if (method == "log1p" or method.startswith("fallback")) and (p99 > p1):
+            # Base scaling with cohort p1/p99
             denom = p99 - p1
             sc = (col - p1) / denom
             sc = np.clip(sc, 0.0, 1.0)
             sc[col == 0] = 0.0
 
-            # 3a) optional log1p fallback for original 'robust' only
-            if method == "robust" and log_fallback_enabled:
+            # 3a️⃣ Fallback Handling for log1p or sqrt
+            if method == "log1p":
+                # If still too narrow, attempt fallback to sqrt
                 zero_frac = float((sc < 1e-5).mean())
+
+                # Directly apply sqrt if zero fraction is high
                 if zero_frac > zero_frac_thresh:
-                    log_col = np.zeros_like(col)
-                    log_col[nonzero_mask] = np.log1p(col[nonzero_mask])
-                    good = log_col > 0
+                    sqrt_col = np.zeros_like(col)
+                    sqrt_col[nonzero_mask] = np.sqrt(col[nonzero_mask])
+                    good = sqrt_col > 0
+
                     if np.any(good):
-                        pmin, pmax = np.nanpercentile(log_col[good], [1, 99])
+                        # Recompute percentiles
+                        pmin, pmax = np.nanpercentile(sqrt_col[good], [1, 99])
+
                         if pmax > pmin:
-                            sc = (log_col - pmin) / (pmax - pmin)
+                            # Rescale the sqrt-transformed values
+                            sc = (sqrt_col - pmin) / (pmax - pmin)
                             sc = np.clip(sc, 0.0, 1.0)
                             sc[col == 0] = 0.0
-                            stats_df.at[row_idx, "marker_method"] = "fallback_log1p"
-                            stats_df.at[row_idx, "p1"]            = pmin
-                            stats_df.at[row_idx, "p99"]           = pmax
-                            stats_df.at[row_idx, "fallback"]      = "log1p"
+
+                            # Update stats
+                            stats_df.at[row_idx, "marker_method"] = "fallback_sqrt"
+                            stats_df.at[row_idx, "p1"] = pmin
+                            stats_df.at[row_idx, "p99"] = pmax
+                            stats_df.at[row_idx, "fallback"] = "sqrt"
                             logger.info(
-                                f"[{marker}] log1p fallback applied (zero_frac={zero_frac:.2f})"
+                                f"[{marker}] sqrt fallback applied (zero_frac={zero_frac:.2f})"
                             )
-            # assign the scaled array
+
+            # ✅ Finally, assign the scaled array
             scaled[:, j] = sc
             continue
 
@@ -170,7 +180,7 @@ def compute_adaptive_marker_stats_from_cohort(
         all_matrices: List[np.ndarray],
         var_names: List[str],
         sample_max_cells: int = 100_000,
-        min_range: float = 1e-3,
+        min_range: float = 1e-4,
         cv_frac_thresh: float = 0.01,
 ) -> pd.DataFrame:
     """
@@ -238,19 +248,27 @@ def compute_adaptive_marker_stats_from_cohort(
         else:
             low_pct, high_pct = 10.0, 90.0
 
-        p1, p99 = np.nanpercentile(nonzero, [low_pct, high_pct])
-        method = "robust"
+        # 1️⃣ Apply `log1p` by default as the first transformation
+        t = np.log1p(nonzero)
+        method = "log1p"
         fallback = None
 
-        # 3) fallback if range too narrow
+        # 2️⃣ Calculate percentiles after transformation
+        p1, p99 = np.nanpercentile(t, [1, 99])
+
+        # 3️⃣ Fallback if the spread is too narrow
         if (p99 - p1) < min_range:
             for fb_name, transform in [
-                #("minmax", lambda x: x),
-                ("log1p", np.log1p),
                 ("sqrt", np.sqrt),
+                # ("minmax", lambda x: x),  # Uncomment if you want to bring back minmax
             ]:
+                # Apply the transformation
                 t = transform(nonzero)
+
+                # Recompute percentiles
                 lo, hi = np.nanpercentile(t, [1, 99])
+
+                # Check if the new spread meets the minimum range
                 if (hi - lo) >= min_range:
                     method = f"fallback_{fb_name}"
                     fallback = fb_name
