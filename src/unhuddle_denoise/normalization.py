@@ -245,15 +245,12 @@ def compute_adaptive_marker_stats_from_cohort(
         # 3) fallback if range too narrow
         if (p99 - p1) < min_range:
             for fb_name, transform in [
-                ("minmax", lambda x: x),
+                #("minmax", lambda x: x),
                 ("log1p", np.log1p),
                 ("sqrt", np.sqrt),
             ]:
                 t = transform(nonzero)
-                if fb_name == "minmax":
-                    lo, hi = t.min(), t.max()
-                else:
-                    lo, hi = np.nanpercentile(t, [1, 99])
+                lo, hi = np.nanpercentile(t, [1, 99])
                 if (hi - lo) >= min_range:
                     method = f"fallback_{fb_name}"
                     fallback = fb_name
