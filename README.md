@@ -1019,7 +1019,7 @@ We currently provide a command-line interface (CLI) because it's the most flexib
 
 ---
 
-<details><summary><h3>Q5. I heard command line usage is powerful and may be dangerous for people without formal training?</h3></summary>
+<details><summary><h3>Q5. I heard command line is powerful and may be dangerous for people without formal training?</h3></summary>
 
 
 
