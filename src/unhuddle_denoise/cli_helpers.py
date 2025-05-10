@@ -606,7 +606,7 @@ def run_cohort_normalization_adaptive(
     sensor_markers: Optional[List[str]] = None,
     normalization: str = "sensormarker",
     sample_max_cells: int = 100_000,
-    min_range: float = 1e-3,
+    min_range: float = 1e-5,
     cv_frac_thresh: float = 0.01,
 ) -> None:
     """
@@ -739,6 +739,7 @@ def run_cohort_normalization_adaptive(
 
         # Stage 2: Compute cohort stats
         logger.info(f"📊 Computing cohort stats for branch '{branch}'")
+        logger.debug(f"min_range: {min_range}")
         marker_stats = compute_adaptive_marker_stats_from_cohort(
             norms,
             var_names=markers,
