@@ -180,7 +180,7 @@ def compute_adaptive_marker_stats_from_cohort(
         all_matrices: List[np.ndarray],
         var_names: List[str],
         sample_max_cells: int = 100_000,
-        min_range: float = 1e-4,
+        min_range: float = 1e-5,
         cv_frac_thresh: float = 0.01,
 ) -> pd.DataFrame:
     """
@@ -215,7 +215,8 @@ def compute_adaptive_marker_stats_from_cohort(
                 "p_upper_pct": None,
                 "p1": 0.0,
                 "p99": 0.0,
-                "fallback": "all_zero"
+                "fallback": "all_zero",
+                "min_range": None,
             })
             continue
 
@@ -236,7 +237,8 @@ def compute_adaptive_marker_stats_from_cohort(
                 "p_upper_pct": None,
                 "p1": 0.0,
                 "p99": 1.0,
-                "fallback": "binary"
+                "fallback": "binary",
+                "min_range": None
             })
             continue
 
@@ -248,7 +250,7 @@ def compute_adaptive_marker_stats_from_cohort(
         else:
             low_pct, high_pct = 10.0, 90.0
 
-        # 1️⃣ Apply `log1p` by default as the first transformation
+        # 1️⃣ Apply log1p by default as the first transformation
         t = np.log1p(nonzero)
         method = "log1p"
         fallback = None
@@ -256,14 +258,21 @@ def compute_adaptive_marker_stats_from_cohort(
         # 2️⃣ Calculate percentiles after transformation
         p1, p99 = np.nanpercentile(t, [1, 99])
 
-        # 3️⃣ Fallback if the spread is too narrow
+        # 3️⃣ Compute min_range dynamically as 0.1% of the range or fallback to 1e-5
+        min_range = max(1e-5, 0.0001 * (p99 - p1))
+
+        # 4️⃣ Fallback if the spread is too narrow
         if (p99 - p1) < min_range:
             for fb_name, transform in [
                 ("sqrt", np.sqrt),
-                # ("minmax", lambda x: x),  # Uncomment if you want to bring back minmax
             ]:
-                # Apply the transformation
-                t = transform(nonzero)
+                # Apply the transformation, safely clamp for sqrt
+                t = transform(np.maximum(nonzero, 0))
+
+                # Check for NaNs
+                if np.any(np.isnan(t)):
+                    logger.warning(f"[{marker}] NaNs detected during {fb_name} fallback, skipping.")
+                    continue
 
                 # Recompute percentiles
                 lo, hi = np.nanpercentile(t, [1, 99])
@@ -284,7 +293,8 @@ def compute_adaptive_marker_stats_from_cohort(
             "p_upper_pct": high_pct,
             "p1": float(p1),
             "p99": float(p99),
-            "fallback": fallback
+            "fallback": fallback,
+            "min_range": min_range
         })
 
     return pd.DataFrame.from_records(records)
