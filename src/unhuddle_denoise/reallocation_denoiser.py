@@ -175,7 +175,7 @@ def run_denoising_pipeline_on_dataframe(
     signal_q_high: float = 99.99,
     min_cells_per_bin: int = 10,
     min_area: float = 15,
-    noise_q: float = 90,  # <-- new parameter added here
+    noise_q: float = 75,  # percentile noise in large cells
 ) -> dict:
     """
     Denoise intensity values per marker using a noise-based regression approach.
