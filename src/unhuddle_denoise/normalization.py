@@ -71,16 +71,13 @@ def _per_cell_normalize(
 
 def apply_cohort_scaling(
     norm_matrix: np.ndarray,
-    var_names: List[str],
+    var_names: list,
     stats_df: pd.DataFrame,
     zero_frac_thresh: float = 0.6,
-    log_fallback_enabled: bool = True
 ) -> np.ndarray:
     """
     Scale each column of `norm_matrix` to [0,1] per the cohort stats in `stats_df`.
-    Supports 'binary_by_cv_or_frac', 'robust', and any 'fallback_*' methods.
-    If >zero_frac_thresh of cells collapse to zero under robust scaling, optionally
-    fallback to log1p and update `stats_df` accordingly.
+    Supports 'binary_by_cv_or_frac', 'all_zero', and 'log1p' methods.
     """
     n_cells, n_markers = norm_matrix.shape
     scaled = np.zeros_like(norm_matrix)
@@ -107,12 +104,11 @@ def apply_cohort_scaling(
         if not nonzero_mask.any():
             logger.info(f"[{marker}] All-zero column — filling with 0s")
             stats_df.at[row_idx, "marker_method"] = "all_zero"
-            stats_df.at[row_idx, "p1"]            = 0.0
-            stats_df.at[row_idx, "p99"]           = 0.0
-            stats_df.at[row_idx, "fallback"]      = "all_zero"
+            stats_df.at[row_idx, "p1"] = 0.0
+            stats_df.at[row_idx, "p99"] = 0.0
             continue
 
-        # 2) Binary scaling and all zero
+        # 2) Binary scaling
         if method in {"binary_by_cv_or_frac", "binary_by_frac"}:
             EPS = 1e-4
             scaled[:, j] = (col > EPS).astype(float)
@@ -121,45 +117,15 @@ def apply_cohort_scaling(
             scaled[:, j] = 0.0
             continue
 
-        # 3️⃣ Robust or Fallback Method Application
-        if (method == "log1p" or method.startswith("fallback")) and (p99 > p1):
+        # 3) Log1p Scaling
+        if method == "log1p" and (p99 > p1):
             # Base scaling with cohort p1/p99
             denom = p99 - p1
             sc = (col - p1) / denom
             sc = np.clip(sc, 0.0, 1.0)
             sc[col == 0] = 0.0
 
-            # 3a️⃣ Fallback Handling for log1p or sqrt
-            if method == "log1p":
-                # If still too narrow, attempt fallback to sqrt
-                zero_frac = float((sc < 1e-5).mean())
-
-                # Directly apply sqrt if zero fraction is high
-                if zero_frac > zero_frac_thresh:
-                    sqrt_col = np.zeros_like(col)
-                    sqrt_col[nonzero_mask] = np.sqrt(col[nonzero_mask])
-                    good = sqrt_col > 0
-
-                    if np.any(good):
-                        # Recompute percentiles
-                        pmin, pmax = np.nanpercentile(sqrt_col[good], [1, 99])
-
-                        if pmax > pmin:
-                            # Rescale the sqrt-transformed values
-                            sc = (sqrt_col - pmin) / (pmax - pmin)
-                            sc = np.clip(sc, 0.0, 1.0)
-                            sc[col == 0] = 0.0
-
-                            # Update stats
-                            stats_df.at[row_idx, "marker_method"] = "fallback_sqrt"
-                            stats_df.at[row_idx, "p1"] = pmin
-                            stats_df.at[row_idx, "p99"] = pmax
-                            stats_df.at[row_idx, "fallback"] = "sqrt"
-                            logger.info(
-                                f"[{marker}] sqrt fallback applied (zero_frac={zero_frac:.2f})"
-                            )
-
-            # ✅ Finally, assign the scaled array
+            # ✅ Assign the scaled array directly (no fallback)
             scaled[:, j] = sc
             continue
 
@@ -168,6 +134,8 @@ def apply_cohort_scaling(
         scaled[:, j] = 0.0
 
     return scaled
+
+
 
 
 
@@ -214,9 +182,7 @@ def compute_adaptive_marker_stats_from_cohort(
                 "p_lower_pct": None,
                 "p_upper_pct": None,
                 "p1": 0.0,
-                "p99": 0.0,
-                "fallback": "all_zero",
-                "min_range": None,
+                "p99": 0.0
             })
             continue
 
@@ -236,9 +202,7 @@ def compute_adaptive_marker_stats_from_cohort(
                 "p_lower_pct": None,
                 "p_upper_pct": None,
                 "p1": 0.0,
-                "p99": 1.0,
-                "fallback": "binary",
-                "min_range": None
+                "p99": 1.0
             })
             continue
 
@@ -253,37 +217,11 @@ def compute_adaptive_marker_stats_from_cohort(
         # 1️⃣ Apply log1p by default as the first transformation
         t = np.log1p(nonzero)
         method = "log1p"
-        fallback = None
 
         # 2️⃣ Calculate percentiles after transformation
         p1, p99 = np.nanpercentile(t, [1, 99])
 
-        # 3️⃣ Compute min_range dynamically as 0.1% of the range or fallback to 1e-5
-        min_range = max(1e-5, 0.0001 * (p99 - p1))
-
-        # 4️⃣ Fallback if the spread is too narrow
-        if (p99 - p1) < min_range:
-            for fb_name, transform in [
-                ("sqrt", np.sqrt),
-            ]:
-                # Apply the transformation, safely clamp for sqrt
-                t = transform(np.maximum(nonzero, 0))
-
-                # Check for NaNs
-                if np.any(np.isnan(t)):
-                    logger.warning(f"[{marker}] NaNs detected during {fb_name} fallback, skipping.")
-                    continue
-
-                # Recompute percentiles
-                lo, hi = np.nanpercentile(t, [1, 99])
-
-                # Check if the new spread meets the minimum range
-                if (hi - lo) >= min_range:
-                    method = f"fallback_{fb_name}"
-                    fallback = fb_name
-                    p1, p99 = float(lo), float(hi)
-                    break
-
+        # 3️⃣ Log the results
         records.append({
             "marker": marker,
             "marker_method": method,
@@ -292,9 +230,7 @@ def compute_adaptive_marker_stats_from_cohort(
             "p_lower_pct": low_pct,
             "p_upper_pct": high_pct,
             "p1": float(p1),
-            "p99": float(p99),
-            "fallback": fallback,
-            "min_range": min_range
+            "p99": float(p99)
         })
 
     return pd.DataFrame.from_records(records)
