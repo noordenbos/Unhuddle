@@ -165,7 +165,8 @@ def parse_arguments() -> argparse.Namespace:
                         help="Value range for density map visualization (default: 0 800)")
     parser.add_argument("--radius_DRfilter", type=float, default=0.8,
                         help="Neighborhood radius for dimension reduction based filtering (default: 0.8)")
-
+    parser.add_argument("--percentile", type=float, default=5,
+                        help="lower percentile noise filtering during the cohort denoising step (default: 5)")
     #silent:
     parser.add_argument("--qc_region_threshold", type=float, default=0.8,
                         help=argparse.SUPPRESS)

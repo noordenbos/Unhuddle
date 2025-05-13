@@ -116,8 +116,8 @@ def compute_reallocation_with_checks(interactions, protein_features, tol=1e-6, u
 
     for _, row in protein_features.iterrows():
         for col in row.index:
-            if col.endswith("_ExclusionMembrane_FinalDenoised_Intensity"):
-                marker = col.replace("_ExclusionMembrane_FinalDenoised_Intensity", "")
+            if col.endswith("_ExclusionMembrane_Sum_Intensity_denoised"):
+                marker = col.replace("_ExclusionMembrane_Sum_Intensity_denoised", "")
                 denoised_intensity[(row["Label"], marker)] = row[col]
             elif col.endswith("_ExclusionMembrane_Mean_Intensity"):
                 marker = col.replace("_ExclusionMembrane_Mean_Intensity", "")
@@ -283,13 +283,13 @@ def settle_debts_from_residuals(
     fov_name = os.path.basename(fov_folder)
     if not isinstance(protein_features.index, pd.MultiIndex):
         protein_features = protein_features.set_index(["FOV", "Label"])
-    residual_cols = [c for c in protein_features.columns if c.endswith("_ExclusionMembrane_FinalDenoised_Intensity")]
-    markers = [c.replace("_ExclusionMembrane_FinalDenoised_Intensity", "") for c in residual_cols]
+    residual_cols = [c for c in protein_features.columns if c.endswith("_ExclusionMembrane_Sum_Intensity_denoised")]
+    markers = [c.replace("_ExclusionMembrane_Sum_Intensity_denoised", "") for c in residual_cols]
 
     for label, d in reallocation.items():
         key = (fov_name, label)
         for m in markers:
-            col = f"{m}_ExclusionMembrane_FinalDenoised_Intensity"
+            col = f"{m}_ExclusionMembrane_Sum_Intensity_denoised"
             if col in protein_features.columns:
                 protein_features.at[key, col] += d["reallocated_intensity"].get(m, 0)
 
@@ -303,7 +303,7 @@ def settle_debts_from_residuals(
 
         key = (fov_name, label)
         for m, value in intensity_dict.items():
-            col = f"{m}_ExclusionMembrane_FinalDenoised_Intensity"
+            col = f"{m}_ExclusionMembrane_Sum_Intensity_denoised"
             if col in protein_features.columns:
                 protein_features.at[key, col] += value
     corrected_df = protein_features.reset_index()[["Label"] + residual_cols]

@@ -118,21 +118,10 @@ def main():
     # Stage 2a: Denoising (cohort-level)
     if args.use_denoised:
         logger.info("📊 Computing denoised reallocation factors (cohort-wide) ...")
-        from unhuddle_denoise.reallocation_denoiser import compute_denoised_reallocation_factors
+        from unhuddle_denoise.percentile_denoise import run_percentile_denoise
+        run_percentile_denoise(args= args, dirs=dirs)
+        logger.info("✅ Simple percentile denoising complete. QC & outputs in %s", dirs['QC_metadata_denoised'])
 
-        protein_csv_paths = [
-            os.path.join(dirs["protein"], f)
-            for f in os.listdir(dirs["protein"])
-            if f.endswith(".csv")
-        ]
-
-        denoised_summary_path = os.path.join(dirs["QC_metadata_denoised"], "denoised_reallocation_summary.csv")
-        compute_denoised_reallocation_factors(
-            protein_csv_paths=protein_csv_paths,
-            dirs=dirs,
-            args=args,
-        )
-        logger.info(f"✅ Denoised reallocation factors saved to: {denoised_summary_path}")
 
     # Stage 2b: Reallocation
     results_stage2 = run_parallel_stage(
