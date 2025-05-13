@@ -25,6 +25,7 @@ from unhuddle_denoise.cli_helpers import (
     count_total_cells_from_csvs,
     run_cohort_normalization_adaptive,
     get_available_protein_markers,
+    resolve_normalization_markers,
 )
 
 # These must remain top-level for multiprocessing compatibility
@@ -43,7 +44,15 @@ def main():
 
     logger = logging.getLogger(__name__)
     logger.debug(f"Logger '{logger.name}' is active at level: {logging.getLevelName(logger.getEffectiveLevel())}")
+    #lookup protein markers for 'all' option
+    args.normalization_markers = resolve_normalization_markers(
+        args.normalization_markers,
+        args.base_path,
+        args.nuclear_markers
+    )
 
+    # Optional: Log the final list for confirmation
+    logger.info(f"Resolved normalization markers: {args.normalization_markers}")
     # Basic CLI validation
     if args.list_available_markers:
         list_available_markers(args)
