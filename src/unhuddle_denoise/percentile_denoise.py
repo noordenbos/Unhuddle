@@ -106,7 +106,7 @@ def write_metadata(metadata, out_dir):
     df.to_csv(path)
     logging.info("Metadata saved to %s", path)
 
-def update_proteins(denoised, protein_dir, layer_suffix, percentiles):
+def update_proteins(denoised, protein_dir):
     """For each FOV, append the new denoised columns to its protein CSV."""
     for fov, grp in denoised.groupby("fov"):
         prot_path = os.path.join(protein_dir, fov + ".csv")
@@ -128,34 +128,35 @@ def update_proteins(denoised, protein_dir, layer_suffix, percentiles):
         out.to_csv(prot_path, index=False)
         logging.info("Updated %s with simple-denoised columns", prot_path)
 
-def run_percentile_denoise(args, dirs):
+def run_percentile_denoise(args, dirs, bin_count=100, lowess_frac=0.1):
     """
-    Run simple percentile denoising at a single user-specified percentile p,
-    then produce QC figures with binned percentile‐curves at [p/2, p, 2p].
+    Run simple percentile denoising at a user-specified percentile p,
+    then produce QC figures with smoothed percentile‐curves at [p/2, p, 2p].
+
+    Improvements:
+      1. Apply LOWESS smoothing *before* subtracting the threshold from your data.
+      2. Use the identical smoothed thresholds in the QC plots.
     """
     import os
     import logging
     import numpy as np
     import pandas as pd
     import matplotlib.pyplot as plt
-    from matplotlib.backends.backend_pdf import PdfPages
+    from statsmodels.nonparametric.smoothers_lowess import lowess
 
-
-    # 1) Directories
+    # ── 1) Directories ─────────────────────────────────────────────────────────────
     morph_dir   = dirs["morph"]
     protein_dir = dirs["protein"]
-    qc_out_dir  = dirs.get(
-        "QC_metadata_denoised",
-        os.path.join(dirs["QC"], "metadata_denoise")
-    )
+    qc_out_dir  = dirs.get("QC_metadata_denoised",
+                           os.path.join(dirs["QC"], "metadata_denoise"))
     os.makedirs(qc_out_dir, exist_ok=True)
 
-    # 2) Parse single percentile p
+    # ── 2) Parse percentiles ───────────────────────────────────────────────────────
     p = float(args.percentile)
     low_p, mid_p, high_p = p/2.0, p, p*2.0
     percentiles = [low_p, mid_p, high_p]
 
-    # 3) Morphology column
+    # ── 3) Morphology column ──────────────────────────────────────────────────────
     if args.denoise_regress.lower() == "perimeter":
         morph_col = "Perimeter"
     elif args.denoise_regress.lower() == "area":
@@ -163,116 +164,163 @@ def run_percentile_denoise(args, dirs):
     else:
         raise ValueError("`--denoise_regress` must be 'perimeter' or 'area'")
 
-    # 4) Load and combine all FOVs
+    # ── 4) Load data ────────────────────────────────────────────────────────────────
     full_df, fovs = load_all_fovs(morph_dir, protein_dir, morph_col)
 
-    # 5) Identify markers
+    # ── 5) Identify markers ─────────────────────────────────────────────────────────
     layer_suffix   = "_ExclusionMembrane_Sum_Intensity"
     intensity_cols = [c for c in full_df.columns if c.endswith(layer_suffix)]
-    markers = [c[:-len(layer_suffix)] for c in intensity_cols]
+    markers        = [c[:-len(layer_suffix)] for c in intensity_cols]
 
-    # 6) Compute global thresholds & denoised columns
+    # ── 6) Compute raw thresholds for each bin & marker ────────────────────────────
+    bin_edges   = np.linspace(full_df[morph_col].min(),
+                              full_df[morph_col].max(),
+                              bin_count + 1)
+    bin_idxs    = np.digitize(full_df[morph_col].values, bin_edges) - 1
+
+    # thr_raw[m][pv] is length-bin_count array of raw percentiles
+    thr_raw = {
+        m: {pv: np.zeros(bin_count) for pv in percentiles}
+        for m in markers
+    }
+
+    # stash original intensities for fast access
+    raw_vals = {
+        m: full_df[f"{m}{layer_suffix}"].values
+        for m in markers
+    }
+
+    for m in markers:
+        vals = raw_vals[m]
+        for b in range(bin_count):
+            mask = (bin_idxs == b)
+            if not mask.any():
+                continue
+            nz = vals[mask][vals[mask] > 0]
+            for pv in percentiles:
+                thr_raw[m][pv][b] = np.percentile(nz, pv) if nz.size else 0
+
+    # ── 7) Smooth thresholds if LOWESS is available ────────────────────────────────
+    thr_used = {m: {} for m in markers}
+    # define x-grid over which thresholds are computed
+    grid = np.linspace(full_df[morph_col].min(),
+                       full_df[morph_col].max(),
+                       bin_count)
+    for m in markers:
+        for pv in percentiles:
+            sm = lowess(thr_raw[m][pv], grid, frac=lowess_frac, it=0)
+            # sm[:,1] are the smoothed threshold values
+            thr_used[m][pv] = sm[:, 1]
+
+    # ── 8) Apply smoothed mid-percentile threshold to denoise data ────────────────
     denoised = full_df.copy()
-    thresholds = {}
-    for marker in markers:
-        col = marker + layer_suffix
-        vals = denoised[col].values
-        nz = vals[vals > 0]
-        thr = float(np.percentile(nz, p)) if nz.size else 0.0
-        thresholds[marker] = thr
-        denoised[f"{marker}{layer_suffix}_denoised"] = np.clip(vals - thr, 0, None)
+    for m in markers:
+        out = np.zeros_like(raw_vals[m])
+        for b in range(bin_count):
+            mask = (bin_idxs == b)
+            thr = thr_used[m][mid_p][b]
+            out[mask] = np.clip(raw_vals[m][mask] - thr, 0, None)
+        denoised[f"{m}{layer_suffix}_denoised"] = out
 
-    # 7) Pre-filter markers (once) and log skipped
+    # ── 9) Persist back to CSVs ─────────────────────────────────────────────────────
+    if "fov" not in denoised.columns:
+        denoised["fov"] = denoised.index.str.split("_").str[0]
+    update_proteins(denoised, protein_dir)
+
+    # ──10) Filter markers for QC ────────────────────────────────────────────────────
     min_morph, min_cells = 10, 50
     valid_markers, failed = [], []
-    for marker in markers:
-        df_m = full_df[[morph_col, marker + layer_suffix]]
-        df_m = df_m[(df_m[marker + layer_suffix] > 0) &
-                    (df_m[morph_col] >= min_morph)]
+    for m in markers:
+        df_m = full_df[
+            (full_df[f"{m}{layer_suffix}"] > 0) &
+            (full_df[morph_col] >= min_morph)
+        ]
         if len(df_m) >= min_cells:
-            valid_markers.append(marker)
+            valid_markers.append(m)
         else:
-            failed.append(marker)
-
-    if failed:
-        logging.warning("Markers skipped (too few cells): %s", ", ".join(failed))
-
+            failed.append(m)
+    logging.info(f"Valid markers: {valid_markers}")
+    logging.info(f"Skipped markers: {failed}")
     if not valid_markers:
-        logging.error("No markers passed filtering (min_cells=%d). Exiting.", min_cells)
-        return
+        logging.warning("No markers passed; plotting all.")
+        valid_markers = markers
 
-    # 8) Build compiled QC figure
-    bin_count = 60
-    max_points = 5000  # subsample scatter for speed
-    n_rows, n_cols = len(valid_markers), 1 + len(percentiles)
-    fig, axs = plt.subplots(n_rows, n_cols,
-                            figsize=(5 * n_cols, 4 * n_rows),
-                            squeeze=False)
+    # ──11) Plotting ────────────────────────────────────────────────────────────────
+    max_pts   = 5000
+    n_rows    = len(valid_markers)
+    n_cols    = 1 + len(percentiles)
+    fig, axs  = plt.subplots(n_rows, n_cols,
+                             figsize=(5 * n_cols, 4 * n_rows),
+                             squeeze=False)
+    colors    = ["red", "orange", "green"]
+    grid_smo  = np.linspace(full_df[morph_col].min(),
+                             full_df[morph_col].max(),
+                             bin_count)
 
-    colors = ['red', 'orange', 'green']
-    for i, marker in enumerate(valid_markers):
-        col = marker + layer_suffix
-        df_m = full_df[[morph_col, col]]
-        df_m = df_m[(df_m[col] > 0) & (df_m[morph_col] >= min_morph)]
+    for i, m in enumerate(valid_markers):
+        col = f"{m}{layer_suffix}"
+        df_m = full_df[[morph_col, col]].query(f"{col}>0 and {morph_col}>={min_morph}")
+        if df_m.empty:
+            logging.warning(f"No data for {m}, skipping plot.")
+            continue
 
-        # binning
-        df_m['bin'] = pd.cut(df_m[morph_col], bins=bin_count, labels=False)
-        centers = df_m.groupby('bin')[morph_col].mean()
-        curves = {
-            pv: df_m.groupby('bin')[col]
-            .apply(lambda z: np.percentile(z, pv))
-            for pv in percentiles
-        }
-
-        x_full = df_m[morph_col].values
-        y_full = df_m[col].values
-        # subsample indices
-        if len(x_full) > max_points:
-            idx = np.random.choice(len(x_full), max_points, replace=False)
-            x, y = x_full[idx], y_full[idx]
+        # scatter prep
+        x_all, y_all = df_m[morph_col].values, df_m[col].values
+        if len(x_all) > max_pts:
+            idx = np.random.choice(len(x_all), max_pts, replace=False)
         else:
-            x, y = x_full, y_full
+            idx = np.arange(len(x_all))
 
-        # left: scatter + curves
+        xmin, xmax = x_all.min(), x_all.max()
+        rmin, rmax = np.inf, -np.inf
+
+        # raw + smoothed curves
         ax0 = axs[i][0]
-        ax0.scatter(x, y, alpha=0.3, s=5, color='blue')
+        ax0.scatter(x_all[idx], y_all[idx], alpha=0.3, s=5)
+
         for j, pv in enumerate(percentiles):
-            ax0.plot(centers, curves[pv],
-                     linestyle='--', alpha=0.8,
-                     color=colors[j], label=f"p{pv:.1f}")
-        if i == 0:
-            ax0.set_title("Intensity vs " + morph_col)
+            thr_curve = thr_used[m][pv]
+            # for plotting, align thr_curve to bin centers:
+            bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
+            ax0.plot(bin_centers, thr_curve,
+                     linestyle="--", alpha=0.8,
+                     color=colors[j],
+                     label=f"p{pv:.1f} ({'smoothed' if lowess else 'raw'})")
+
+            # compute residuals
+            thr_interp = np.interp(x_all, bin_centers, thr_curve)
+            r = y_all - thr_interp
+            rmin, rmax = min(rmin, r.min()), max(rmax, r.max())
+
+        ax0.set_title(f"{m}")
         if i == n_rows - 1:
             ax0.set_xlabel(morph_col)
-        ax0.set_ylabel(marker)
-        ax0.legend(fontsize='x-small')
+        ax0.set_ylabel("Intensity")
+        ax0.legend(fontsize="x-small")
+        ax0.set_xlim(xmin, xmax)
+        ax0.set_ylim(min(y_all.min(), rmin), max(y_all.max(), rmax))
 
         # residual panels
         for j, pv in enumerate(percentiles):
             ax = axs[i][j + 1]
-            resid = y_full - np.interp(x_full, centers, curves[pv])
-            # subsample residual scatter too
-            if len(x_full) > max_points:
-                ax.scatter(x, resid[idx], alpha=0.3, s=5, color=colors[j])
-            else:
-                ax.scatter(x, resid, alpha=0.3, s=5, color=colors[j])
-            ax.axhline(0, linestyle='--', color='gray')
+            thr_curve = thr_used[m][pv]
+            thr_interp = np.interp(x_all, bin_centers, thr_curve)
+            r = y_all - thr_interp
+            ax.scatter(x_all[idx], r[idx], alpha=0.3, s=5, color=colors[j])
+            ax.axhline(0, linestyle="--")
             if i == 0:
                 ax.set_title(f"Residuals p{pv:.1f}")
             if i == n_rows - 1:
                 ax.set_xlabel(morph_col)
+            ax.set_xlim(xmin, xmax)
+            ax.set_ylim(min(y_all.min(), rmin), max(y_all.max(), rmax))
 
     plt.tight_layout()
-    out_path = os.path.join(qc_out_dir, "compiled_denoise_QC.png")
-    fig.savefig(out_path, dpi=150)
+    out_file = os.path.join(qc_out_dir, "compiled_denoise_QC.png")
+    fig.savefig(out_file, dpi=150)
     plt.close(fig)
-    logging.info("Saved compiled QC to %s", out_path)
+    logging.info("✅ Denoising + QC plot complete.")
 
-    # 9) Metadata CSV & 10) update proteins
-    write_metadata({m: {"thr": t} for m, t in thresholds.items()}, qc_out_dir)
-    update_proteins(denoised, protein_dir, layer_suffix, [p])
-
-    logging.info("✅ Percentile denoising + compiled QC complete.")
 
 
 
