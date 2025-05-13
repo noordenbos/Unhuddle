@@ -246,7 +246,7 @@ def run_percentile_denoise(args, dirs, bin_count=100, lowess_frac=0.1):
         valid_markers = markers
 
     # ──11) Plotting ────────────────────────────────────────────────────────────────
-    max_pts   = 5000
+    max_pts   = 100000
     n_rows    = len(valid_markers)
     n_cols    = 1 + len(percentiles)
     fig, axs  = plt.subplots(n_rows, n_cols,

@@ -134,7 +134,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--check_output_exist", action="store_true", default=False,
                         help="Skip FOVs if output already exists in normalization folder")
     parser.add_argument("--normalization_markers", nargs="*", default="all",
-                        help="Sensor markers to normalize (e.g. housekeepers) Use 'all' to include all available markers (default).")
+                        help="Total sensor markers to normalize in '--normalize sensormarkers' (e.g. housekeepers) Use 'all' to include all available (nuclear_markers are automatically excluded) markers (default).")
     parser.add_argument("--list_available_markers", action="store_true",
                         help="Print available marker names from first FOV")
     parser.add_argument("--create_adata", action="store_true",
@@ -182,7 +182,7 @@ def parse_arguments() -> argparse.Namespace:
         "--normalization",
         choices=["area", "sensormarker"],
         default="sensormarker",
-        help="Normalization method to use ('area' or 'sensormarker'). Default: sensormarker"
+        help="Normalization method to use ('area' or total protein of 'sensormarker'). Default: sensormarker"
     )
     parser.add_argument(
         "--denoise_regress",
