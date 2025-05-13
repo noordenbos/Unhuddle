@@ -150,7 +150,6 @@ unhuddle-denoise \
   --base_path demodata \
   --output_base_path results/unhuddle_output \
   --nuclear_markers DNA1 DNA2 HistoneH3 \
-  --normalization_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 CD4 CD56 SMA TCRgd \
   --create_nuclear_mask \
   --max_workers 1 \
   --create_adata
@@ -161,7 +160,6 @@ unhuddle-denoise `
   --base_path demodata `
   --output_base_path results\unhuddle_output `
   --nuclear_markers DNA1 DNA2 HistoneH3 `
-  --normalization_markers CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 CD4 CD56 SMA TCRgd `
   --create_nuclear_mask `
   --max_workers 1 `
   --create_adata
@@ -388,6 +386,7 @@ if (Test-Path "demodata" -and Test-Path "README.md") { Write-Host "Cleaning demo
 (make sure all your lines, but the last have a continuation indicator: `\`, for windows change to ` )
 ```bash
 --create_deepcell_mask \
+--membrane_markers_overlay CD20 CD68 CD11b CD11c CD8a CD3 CD7 CD45RA CD45RO CD15 CD163 Vimentin CD31 CD14 CD4 CD56 SMA TCRgd \
 --geckodriver_path /path/to/your/geckodriver
 ``` 
 
@@ -544,11 +543,11 @@ base_path/
 1. Replace `--base_path demodata` with the actual path to your folder containing `{FOV}\` subdirectories.
 2. Replace `--output_base_path` with a fresh folder output name.
 3. Use `--list_available_markers` and run the command.
-4. Update the `--nuclear_markers` and the `normalization_markers` (normalization markers are markers that you need to define a phenotype - you rather want a yes/no answer, instead of numeric).
+4. Update the `--nuclear_markers`. 
 5. Have your own masks? Add `--mask_pattern` --> Glob pattern to find your mask (e.g. `*_mask.tiff`). **NB:** Do not use `*.ome.tiff`.
 6. You do not have your own masks? Try the deepcell webloader function! Make sure to install Firefox and GeckoDriver, add the flags `--create_deepcell_mask` and `--geckodriver_path` (add actual GeckoDriver path).
    5.1. Run the pipeline and check the overlay files. Want to adapt the markers used for the overlay? Use the overrides: `--nuclear-markers_overlay` and `--membrane-markers_overlay`, then rerun.
-7. Try `use_denoise`! The pipeline will calculate the number of total cells and will inform you when there are less than 100,000 cells. You can choose to skip denoise at that stage. Inspect the `denoiser_QC.pdf`!
+7. Try `use_denoise`! The pipeline will calculate the number of total cells and will inform you when there are less than 100,000 cells. You can choose to skip denoise at that stage. Inspect the `complied_denoise_QC.png`!
 8. Inspect all QC. Are you happy? Run dimension reduction using your favorite algorithm (currently not supported in Unhuddle) and load the coordinates in the pipeline using:
    - `--add_dimension_reduction path/to/your_dr_coords`
    - `--coord_cols yourcolname_1 yourcolname_2`
@@ -557,6 +556,10 @@ base_path/
    Rerun and you will see your filtering results in your dimension reduction render, which will be very helpful during phenotyping.
 9. Proceed to phenotyping using your preferred method. Use the Jupyter notebook file to load the phenotypes as obs in your adata object and make use of the random forest classifier to classify your 'hard to classify' cells! Add your metadata and your other omic data. Render additional QC images and explore your data!
 10. Not a pro in Scanpy and adata for analysis and visualization? The attached notebook will guide you to print a comprehensive summary of your adata object that can be interpreted by your favorite LLM. As your LLM is now aware of how to link all data, you can just instruct the chatbot in plain language your needs and it will give you Jupyter notebook snippets to project features on your dimension reduction plot, render tissue images color-coded for the various cell types, perform group comparisons, etc. Happy sciencing!
+
+PRO-USAGE:
+11. subset markers used for normalization to for example housekeeper protein `--normalization_markers` (default is all)
+12. normalize based on 'area' instead of protein intensity `--normalization area`
 
 [← Back to Table of Contents](#quicklinks)
 
@@ -594,7 +597,7 @@ For each FOV (field of view) folder, the following stages are run:
 
 ### 4. **Cohort-Level Signal/Noise Decomposition**
 - If `--use_denoised` is enabled:
-  - A **piecewise linear model** is fit per marker using cell **area** and summed membrane-exclusion signal.
+  - A **percentile** filter is  per marker using cell **area** and summed membrane-exclusion signal.
   - **Signal cones** are identified from small-area cells; **noise cones** from large-area cells.
   - The resulting **denoised reallocation factors** quantify the fraction of signal attributable to noise.
 - For cohorts with <200,000 cells, denoising is less reliable and skipped unless the user opts in.
