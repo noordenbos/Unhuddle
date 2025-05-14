@@ -1,5 +1,4 @@
-import os
-from typing import Dict, Optional, Union, Any
+#script currently deprecated, has been replaced by percentile_denoise.py
 
 import pandas as pd
 import numpy as np
@@ -175,7 +174,7 @@ def run_denoising_pipeline_on_dataframe(
     signal_q_high: float = 99.99,
     min_cells_per_bin: int = 10,
     min_area: float = 15,
-    noise_q: float = 95,  # <-- new parameter added here
+    noise_q: float = 75,  # percentile noise in large cells
 ) -> dict:
     """
     Denoise intensity values per marker using a noise-based regression approach.
@@ -228,6 +227,9 @@ def run_denoising_pipeline_on_dataframe(
 
         morph_mean = np.mean(sorted_area)
         morph_std = np.std(sorted_area)
+        # Calculate anchor_x as (morph_mean - morph_std)
+        anchor_x = morph_mean #- morph_std
+        anchor_y = 0
         morph_cutoff = morph_mean + sd_multiplier * morph_std
 
         # 🚀 Updated Step: Select points above morph_cutoff first

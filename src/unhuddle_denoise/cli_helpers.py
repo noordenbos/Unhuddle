@@ -133,8 +133,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--log_level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="WARNING")
     parser.add_argument("--check_output_exist", action="store_true", default=False,
                         help="Skip FOVs if output already exists in normalization folder")
-    parser.add_argument("--normalization_markers", nargs="*", default=None,
-                        help="Sensor markers to normalize functional markers (e.g. CD3 CD45 Vimentin)")
+    parser.add_argument("--normalization_markers", nargs="*", default="all",
+                        help="Total sensor markers to normalize in '--normalize sensormarkers' (e.g. housekeepers) Use 'all' to include all available (nuclear_markers are automatically excluded) markers (default).")
     parser.add_argument("--list_available_markers", action="store_true",
                         help="Print available marker names from first FOV")
     parser.add_argument("--create_adata", action="store_true",
@@ -165,7 +165,8 @@ def parse_arguments() -> argparse.Namespace:
                         help="Value range for density map visualization (default: 0 800)")
     parser.add_argument("--radius_DRfilter", type=float, default=0.8,
                         help="Neighborhood radius for dimension reduction based filtering (default: 0.8)")
-
+    parser.add_argument("--percentile", type=float, default=5,
+                        help="lower percentile noise filtering during the cohort denoising step (default: 5)")
     #silent:
     parser.add_argument("--qc_region_threshold", type=float, default=0.8,
                         help=argparse.SUPPRESS)
@@ -181,7 +182,7 @@ def parse_arguments() -> argparse.Namespace:
         "--normalization",
         choices=["area", "sensormarker"],
         default="sensormarker",
-        help="Normalization method to use ('area' or 'sensormarker'). Default: sensormarker"
+        help="Normalization method to use ('area' or total protein of 'sensormarker'). Default: sensormarker"
     )
     parser.add_argument(
         "--denoise_regress",
@@ -244,6 +245,30 @@ def list_available_markers(args: argparse.Namespace) -> None:
     print(f"\nAvailable markers in FOV '{os.path.basename(first_fov)}':")
     print("list:", " ".join(marker_names))
     print("\n✅ Rerun without --list_available_markers to start the pipeline\n")
+
+
+def resolve_normalization_markers(normalization_markers, base_path, nuclear_markers):
+    """
+    Resolve the normalization markers list.
+
+    Parameters:
+    - normalization_markers (list[str]): List of specified markers or ['all'].
+    - base_path (str): Base path to the FOV folders.
+    - nuclear_markers (list[str]): List of nuclear markers to exclude.
+
+    Returns:
+    - list[str]: Final list of markers to use.
+    """
+    if normalization_markers is None:
+        return []
+
+    if "all" in normalization_markers:
+        # Fetch all available markers if 'all' is specified
+        return get_available_protein_markers(base_path, nuclear_markers)
+
+    # Otherwise, return the provided list
+    return normalization_markers
+
 
 def get_available_protein_markers(
     base_path: str, nuclear_markers: list[str]

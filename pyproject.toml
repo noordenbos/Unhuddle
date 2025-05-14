@@ -21,7 +21,8 @@ dependencies = [
   "anndata",
   "matplotlib",
   "scikit-learn",
-  "seaborn"
+  "seaborn",
+  "statsmodels"
 ]
 
 [build-system]
