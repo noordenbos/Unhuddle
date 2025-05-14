@@ -14,13 +14,13 @@ On the cell to cell borderpixels, shared signal is observed due to
 2. lateral bleed/signal spill
 3. z-projection.  <br>
 
-Unhuddle knows the cell's neighbors, measures their claim to borderpixelintensity and reallocates the bordersignal to the rightful owner. Unhuddle is equiped with an optional denoiser that may be very effective on your dataset if you have a total cell number of >100,000 (however the more the better). NB total cell number is a summation over all field of views (fovs) on the same staining/aquisition batch. 
+Unhuddle knows the cell's neighbors, measures their claim to borderpixelintensity and reallocates the bordersignal to the rightful owner. Unhuddle is equiped with an optional percentile denoiser that works on the core of the cell mask, that may be  effective on your dataset. 
 
-Unhuddle values are normalized by average cell size. Advanced users can choose for normalization against total phenotype marker expression per cell. By identifying stable, broadly expressed "normalization markers" and performing per-cell normalization, UNHUDDLE enables more accurate within-cell-type comparison of functional markers (e.g., checkpoint proteins), even in spatially crowded microenvironments. Additionally this method defends against regions with variation in overall expression, as is frequently seen in antibody based stainings.
+Unhuddle values are normalized by total protein content per cell, but if cell size (surface area or perimeter) is preferred that can be set. Advanced users can choose for normalization against housekeeper protein expression. Additionally this method defends against regions with variation in overall expression, as is frequently seen in antibody based stainings.
 
 The Unhuddle pipeline is built to empower all curious scientists — whether you're a coding pro or just getting started. Our walkthrough makes this process straightforward and accessible. You need to install Python and copy the provided commands to your terminal/shell. See for details:  [Install Python and work with command line interface](#-faq-for-new-users)   
 
-Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, producing a comprehensive AnnData object that packages your cell-level features, masks, spatial coordinates, and marker intensities — all ready for analysis. If you don’t have segmentation masks yet, Unhuddle can optionally generate them using the third-party tool DeepCell-Mesmer, enabling a truly end-to-end experience. Quick preprocessing can be handled within this repository through PENGUIN, streamlining your data preparation before entering the main pipeline.
+Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, producing a comprehensive AnnData object that packages your cell-level features, masks, spatial coordinates, and marker intensities — all ready for analysis. If you don’t have segmentation masks yet, Unhuddle can optionally generate them using the third-party tool DeepCell-Mesmer, enabling a truly end-to-end experience. Quick preprocessing can be handled within this repository through third party software PENGUIN, streamlining your data preparation before entering the main pipeline.
 
 Once preprocessed, Unhuddle seamlessly integrates morphometrics, reallocation models, functional normalization, and quality control in one modular framework. The resulting AnnData object is extendable with custom metadata or omics layers and remains fully compatible with Scanpy and SpaceCat workflows. Example Jupyter notebooks are provided to guide you through downstream analyses and visualizations, making it easy to explore your data.
 
@@ -449,18 +449,20 @@ QC/
 │   ├── overall_stats.csv     # Cohort‐wide cell‐count & filter metrics
 │   └── per_fov_stats.csv     # Per‐FOV cell‐count & filter metric
 │
-├── metadata_denoise/         # (if `--use_denoise`) Denoiser diagnostics
-│   ├── denoiser_metadata.csv # Model parameters & summary stats
-│   └── denoiser_QC.pdf       # plotting of signal and noise cone
+├── denoiser/                 # (if `--use_denoise`) Denoiser diagnostics
+│   └── denoiser_QC.pdf       # plotting of percentile curve and residuals
 │
-├── normalization_plots/      # Scatter‐plot comparisons of normalization after unhuddle data
-│   ├── norm_comparison_summary.png  
-│   └── normalization_per_marker.png
-│
-└── normalization_stats/      # metadata normalization and scaling
-    ├── original_cohort_marker_qc.csv
-    ├── unhuddle_cohort_marker_qc.csv
-    └── denoised_cohort_marker_qc.csv
+└── normalization/            # metadata normalization and scaling
+    ├── norm_plots/
+    │   ├── normalization_per_marker.png
+    │   │                     # raw, /sensormarker, /size metric, after scaling (selected method)
+    │   └── normalization_comparison_summary.png # All cells
+    └── norm_stats/
+        ├── original_cohort_marker_qc.csv
+        ├── unhuddle_cohort_marker_qc.csv
+        │                     # normalization method per marker
+        └── unhuddle_cohort_marker_qc.csv
+
 ```  
 </details>  
 
@@ -547,7 +549,7 @@ base_path/
 5. Have your own masks? Add `--mask_pattern` --> Glob pattern to find your mask (e.g. `*_mask.tiff`). **NB:** Do not use `*.ome.tiff`.
 6. You do not have your own masks? Try the deepcell webloader function! Make sure to install Firefox and GeckoDriver, add the flags `--create_deepcell_mask` and `--geckodriver_path` (add actual GeckoDriver path).
    5.1. Run the pipeline and check the overlay files. Want to adapt the markers used for the overlay? Use the overrides: `--nuclear-markers_overlay` and `--membrane-markers_overlay`, then rerun.
-7. Try `use_denoise`! The pipeline will calculate the number of total cells and will inform you when there are less than 100,000 cells. You can choose to skip denoise at that stage. Inspect the `complied_denoise_QC.png`!
+7. Optional `use_denoise` The pipeline will calculate the number of total cells and will inform you when there are less than 100,000 cells. You can choose to skip denoise at that stage. Inspect the `compiled_denoise_QC.png`!
 8. Inspect all QC. Are you happy? Run dimension reduction using your favorite algorithm (currently not supported in Unhuddle) and load the coordinates in the pipeline using:
    - `--add_dimension_reduction path/to/your_dr_coords`
    - `--coord_cols yourcolname_1 yourcolname_2`
@@ -597,19 +599,19 @@ For each FOV (field of view) folder, the following stages are run:
 
 ### 4. **Cohort-Level Signal/Noise Decomposition**
 - If `--use_denoised` is enabled:
-  - A **percentile** filter is  per marker using cell **area** and summed membrane-exclusion signal.
+  - A **percentile** filter is  per marker using cell **size** (area or perimeter) and **intensity** signal.
   - **Signal cones** are identified from small-area cells; **noise cones** from large-area cells.
   - The resulting **denoised reallocation factors** quantify the fraction of signal attributable to noise.
 - For cohorts with <200,000 cells, denoising is less reliable and skipped unless the user opts in.
-- Output:
-  - `denoised_reallocation_summary.csv`
+
   
 #### 🖼️ Denoiser Visualization Module
 - Produces per-marker plots:
-  - Hexbin density of Area vs. Intensity
-  - Piecewise signal vs. noise fits
-  - Apex anchors and model overlays
-- Output saved as a storyboard PDF for cohort-level review.  
+  - raw scatter
+  - lowess smoothing of percentile curves
+  - residuals after denoising
+- Output:
+  - `compiled_denoise_QC.png`
 
 ---
 
