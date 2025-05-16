@@ -190,6 +190,12 @@ def parse_arguments() -> argparse.Namespace:
         default="perimeter",
         help="Regress based on ('area' or 'perimeter'). Default: perimeter"
     )
+    parser.add_argument(
+        "--denoise_method",
+        choices=["percentile", "noisecone"],
+        default="noisecone",
+        help="Denoise on general lower percentile per size bin (percentile) or regression on large noisy cells (noisecone). Default: noisecone"
+    )
 
     return parser.parse_args()
 
@@ -797,8 +803,40 @@ def run_cohort_normalization_adaptive(
         logger.info(f"📈 Saved QC stats to '{stats_file}'")
 
 
+def denoise_pipeline(args, dirs):
+    '''
+    Run the appropriate denoising method based on the user-specified flag.
+    '''
+    logger = logging.getLogger(__name__)
+    denoise_method = args.denoise_method.lower()
 
+    if denoise_method == "percentile":
+        from unhuddle_denoise.percentile_denoise import run_percentile_denoise
+        logger.info("📊 Running Percentile-based Denoising (cohort-wide) ...")
+        run_percentile_denoise(args=args, dirs=dirs)
+        logger.info("✅ Percentile denoising complete. QC & outputs in %s", dirs['QC_metadata_denoised'])
 
+    elif denoise_method == "noisecone":
+        from unhuddle_denoise.reallocation_denoiser import compute_denoised_reallocation_factors
+        logger.info("📊 Running Noise cone-based Denoising (cohort-wide) ...")
+        protein_csv_paths = [
+            os.path.join(dirs["protein"], f)
+            for f in os.listdir(dirs["protein"])
+            if f.endswith(".csv")
+        ]
+
+        denoised_summary_path = os.path.join(dirs["QC_metadata_denoised"], "denoised_reallocation_summary.csv")
+
+        compute_denoised_reallocation_factors(
+            protein_csv_paths=protein_csv_paths,
+            dirs=dirs,
+            args=args
+        )
+        logger.info(f"✅ Denoised reallocation factors saved to: {denoised_summary_path}")
+
+    else:
+        logger.error(
+            f"❌ Denoising method '{denoise_method}' not recognized. Please use 'percentile' or 'noisecone'.")
 
 
 

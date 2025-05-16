@@ -211,7 +211,7 @@ def run_denoising_pipeline_on_dataframe(
         inten_filt = intensity[valid_mask]
 
         if len(area_filt) < min_cells_per_bin:
-            denoised_df[f"{marker}_ExclusionMembrane_FinalDenoised_Intensity"] = np.zeros_like(intensity)
+            denoised_df[f"{marker}{layer_suffix}_denoised"] = np.zeros_like(intensity)
             metadata[marker] = {
                 "morph_col": morph_col,
                 "morph_cutoff": np.nan,
@@ -258,7 +258,7 @@ def run_denoising_pipeline_on_dataframe(
         residuals = intensity - noise_fit
         residuals_clipped = np.clip(residuals, 0, None)
 
-        denoised_df[f"{marker}_ExclusionMembrane_FinalDenoised_Intensity"] = residuals_clipped
+        denoised_df[f"{marker}{layer_suffix}_denoised"] = residuals_clipped
 
         metadata[marker] = {
             "morph_col": morph_col,
@@ -356,8 +356,8 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
     metadata     = result["metadata"]
 
     # 2) QC plotting (consumes metadata, does NOT re-run fits)
-    qc_pdf = os.path.join(qc_out_dir, "denoiser_QC.pdf")
-    qc_png = os.path.join(qc_out_dir, "denoiser_QC.png")
+    qc_pdf = os.path.join(qc_out_dir, "noise_cone_denoiser_QC.pdf")
+    qc_png = os.path.join(qc_out_dir, "noise_cone_denoiser_QC.png")
     save_signal_noise_qc_from_df(
         df=denoised_df,
         markers=markers,
@@ -392,7 +392,7 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
             # 🚀 Drop any old denoised cols
             den_cols = [
                 c for c in prot_df.columns
-                if c.endswith("_ExclusionMembrane_FinalDenoised_Intensity")
+                if c.endswith("_denoised")
             ]
             if den_cols:
                 logger.info(f"🗑️ Dropping old denoised columns: {den_cols}")
@@ -400,7 +400,7 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
 
             # 🚀 Append new denoised block
             new_block = group[
-                [c for c in group.columns if c.endswith("_ExclusionMembrane_FinalDenoised_Intensity")]
+                [c for c in group.columns if c.endswith("_denoised")]
             ].reset_index(drop=True)
 
             # 🚀 Alignment check

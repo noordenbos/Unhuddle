@@ -26,6 +26,7 @@ from unhuddle_denoise.cli_helpers import (
     run_cohort_normalization_adaptive,
     get_available_protein_markers,
     resolve_normalization_markers,
+    denoise_pipeline
 )
 
 # These must remain top-level for multiprocessing compatibility
@@ -75,7 +76,7 @@ def main():
         raise ValueError("Cannot use both --fitsne and --add_dimensionreduction_coords. Choose one.")
 
     if args.use_denoised:
-        logger.info("⚙️ Percentile normalization enabled — cohort-level ExclMem_Sum data will be fetched before FOV loop.")
+        logger.info("⚙️ Denoiser enabled — cohort-level ExclMem_Sum data will be fetched before FOV loop.")
 
     # Setup paths and input FOVs
     dirs = setup_output_directories(args.output_base_path, args)
@@ -127,10 +128,8 @@ def main():
     # Stage 2a: Denoising (cohort-level)
     if args.use_denoised:
         logger.info("📊 Computing denoised reallocation factors (cohort-wide) ...")
-        from unhuddle_denoise.percentile_denoise import run_percentile_denoise
-        run_percentile_denoise(args= args, dirs=dirs)
+        denoise_pipeline(args, dirs)
         logger.info("✅ Simple percentile denoising complete. QC & outputs in %s", dirs['QC_metadata_denoised'])
-
 
     # Stage 2b: Reallocation
     results_stage2 = run_parallel_stage(
