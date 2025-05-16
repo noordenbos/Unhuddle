@@ -133,7 +133,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--log_level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], default="WARNING")
     parser.add_argument("--check_output_exist", action="store_true", default=False,
                         help="Skip FOVs if output already exists in normalization folder")
-    parser.add_argument("--normalization_markers", nargs="*", default="all",
+    parser.add_argument("--normalization_markers", nargs="*", default=["all"],
                         help="Total sensor markers to normalize in '--normalize sensormarkers' (e.g. housekeepers) Use 'all' to include all available (nuclear_markers are automatically excluded) markers (default).")
     parser.add_argument("--list_available_markers", action="store_true",
                         help="Print available marker names from first FOV")
