@@ -579,24 +579,47 @@ For each FOV (field of view) folder, the following stages are run:
 
 ---
 
-## 🧽 Denoising (Optional)  
-<img src="assets/images/example_denoise_fit.png" alt="logo" width="350" align="right"/>  
+## 🧽 Denoising (Experimental)  
 
-### 4. **Cohort-Level Signal/Noise Decomposition**
-- If `--use_denoised` is enabled:
-  - A **percentile** filter is  per marker using cell **size** (area or perimeter) and **intensity** signal.
-  - **Signal cones** are identified from small-area cells; **noise cones** from large-area cells.
-  - The resulting **denoised reallocation factors** quantify the fraction of signal attributable to noise.
-- For cohorts with <200,000 cells, denoising is less reliable and skipped unless the user opts in.
 
-  
-#### 🖼️ Denoiser Visualization Module
-- Produces per-marker plots:
-  - raw scatter
-  - lowess smoothing of percentile curves
-  - residuals after denoising
-- Output:
-  - `compiled_denoise_QC.png`
+## Cohort-Level Signal/Noise Decomposition
+
+If `--use_denoised` is enabled, you can choose between two denoising methods by specifying the `--denoise_method` flag:
+
+### 1️⃣ Percentile-Based Denoising
+- Use this method if you want to filter signal by **percentiles** based on cell **size** (area or perimeter) and **intensity**.
+- Activate with: `--denoise_method percentile`
+- Adjust the percentile threshold with: `--percentile <value>` (valid range: 1-99)
+- This method performs a percentile cutoff to reduce background noise, especially useful for markers with a clear distribution spread.
+
+**Visualization Example:**
+
+![Percentile-Based Denoising](assets/images/example_denoise_percentile.png)
+
+
+### 2️⃣ Reallocation-Based Denoising
+- Use this method to correct for noise accumulation in larger cells based on **regression fitting**.
+- Activate with: `--denoise_method noisecone`
+- This method fits a linear model to capture the relationship between cell size and noise, and reallocates signal accordingly.
+
+**Visualization Example:**
+
+![Reallocation-Based Denoising](assets/images/example_denoise_fit.png)
+
+
+### 🖼️ **Denoiser Visualization Module**
+Both methods produce the following QC outputs per marker:
+
+- **Raw Scatter Plot:** Shows original signal distribution.
+- **Lowess Smoothing Curves:** Smoothed signal intensity curves.
+- **Residuals after Denoising:** Highlights what was removed as noise.
+
+All outputs are saved to the directory specified in `QC_metadata_denoised`.
+
+
+### ⚠️ **Limitations**
+- For cohorts with fewer than 200,000 cells, denoising is less reliable and will be skipped unless you explicitly opt in.
+
 
 ---
 
