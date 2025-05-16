@@ -643,8 +643,8 @@ All outputs are saved to the directory specified in `QC_metadata_denoised`.
 - Output:
   - `/unhuddle_normalized/{fov}.csv`
   - `/original_normalized/{fov}.csv`
-  
-<img src="assets/images/example_normalization.png" alt="logo" width="550" align="right"/>  
+
+![Reallocation-Based Denoising](assets/images/example_normalization.png)  
 
 #### 🖼️ Normalization Visualization Module
 - Generates:
