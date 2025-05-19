@@ -534,7 +534,7 @@ base_path/
 5. Have your own masks? Add `--mask_pattern` --> Glob pattern to find your mask (e.g. `*_mask.tiff`). **NB:** Do not use `*.ome.tiff`.
 6. You do not have your own masks? Try the deepcell webloader function! Make sure to install Firefox and GeckoDriver, add the flags `--create_deepcell_mask` and `--geckodriver_path` (add actual GeckoDriver path).
    5.1. Run the pipeline and check the overlay files. Want to adapt the markers used for the overlay? Use the overrides: `--nuclear-markers_overlay` and `--membrane-markers_overlay`, then rerun.
-7. Optional `use_denoise` The pipeline will calculate the number of total cells and will inform you when there are less than 100,000 cells. You can choose to skip denoise at that stage. Inspect the `compiled_denoise_QC.png`!
+7. Experimental: `use_denoise`. Supported denoising strategies are learning the relationship between cell size and noise (`--denoise_method noise cone`) or simply regard lower percentile as noise (`--denoise_method percentile). Inspect the visual QC if this makes sense on your data!
 8. Inspect all QC. Are you happy? Run dimension reduction using your favorite algorithm (currently not supported in Unhuddle) and load the coordinates in the pipeline using:
    - `--add_dimension_reduction path/to/your_dr_coords`
    - `--coord_cols yourcolname_1 yourcolname_2`
