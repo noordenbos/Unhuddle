@@ -362,7 +362,7 @@ if (Test-Path "demodata" -and Test-Path "README.md") { Write-Host "Cleaning demo
 ```bash
 --output_base_path results_extended \
 --use_denoise \
---add_dimensionreduction_coords demodata-tnse \
+--add_dimensionreduction_coords demodata-tsne \
 --coord_cols optsne_1 optsne_2
 ```
 
