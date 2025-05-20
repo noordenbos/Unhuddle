@@ -97,16 +97,22 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
         morph.drop(columns=["FOV", "Label", "Centroid_Row", "Centroid_Col", "Nucleus_Centroid_Row", "Nucleus_Centroid_Col"], errors="ignore", inplace=True)
         all_obs.append(morph)
 
+        # Always use the regular normalized intensity for X
+        X = intensity
+        x_src = "normalized_unhuddle"
+        logger.debug(f"✅ Using regular normalized intensity data for FOV: {fov}")
+
+        # If denoised is requested and present, store in a layer
         if denoised_intensity is not None and denoised_sum is not None:
-            X = denoised_intensity
+            if "sum_unhuddle_denoised" not in all_layers:
+                all_layers["sum_unhuddle_denoised"] = []
+            if "unhuddle_denoised" not in all_layers:
+                all_layers["unhuddle_denoised"] = []
             all_layers["sum_unhuddle_denoised"].append(denoised_sum.values)
-            denoised_fovs.append(fov)
-            logger.debug(f"✅ Using denoised intensity data for FOV: {fov}")
-            x_src = "normalized_unhuddle_denoised"
+            all_layers["unhuddle_denoised"].append(denoised_intensity.values)
+            logger.debug(f"🧪 Experimental: Denoised intensity available for FOV: {fov} (stored in layers)")
         else:
-            X = intensity
-            logger.debug(f"⚠️ Denoised data missing for FOV: {fov}, falling back to regular normalized intensity")
-            x_src = "normalized_unhuddle"
+            logger.debug(f"🟡 No denoised data for FOV: {fov} (no layer stored)")
 
         log_column_stats(X, fov)
 

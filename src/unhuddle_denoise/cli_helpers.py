@@ -193,8 +193,8 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--denoise_method",
         choices=["percentile", "noisecone"],
-        default="noisecone",
-        help="Denoise on general lower percentile per size bin (percentile) or regression on large noisy cells (noisecone). Default: noisecone"
+        default="percentile",
+        help="Denoise on general lower percentile per size bin (percentile) or regression on large noisy cells (noisecone). Default: percentile"
     )
 
     return parser.parse_args()
@@ -672,7 +672,7 @@ def run_cohort_normalization_adaptive(
     for branch, out_dir in branch_to_outdir.items():
         in_dir = sum_dirs.get(branch)
         if not in_dir or not Path(in_dir).is_dir():
-            logger.warning(f"⚠️ Skipping branch '{branch}': input folder missing or invalid: {in_dir}")
+            logger.info(f"⚠️ Skipping branch '{branch}': input folder missing or invalid: {in_dir}")
             continue
         if not out_dir:
             logger.warning(f"⚠️ Skipping branch '{branch}': output directory not set")

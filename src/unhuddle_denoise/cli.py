@@ -127,7 +127,7 @@ def main():
 
     # Stage 2a: Denoising (cohort-level)
     if args.use_denoised:
-        logger.info("📊 Computing denoised reallocation factors (cohort-wide) ...")
+        logger.info(f"📊 Computing denoised reallocation factors (cohort-wide), following method: {args.denoise_method}")
         denoise_pipeline(args, dirs)
         logger.info("✅ Simple percentile denoising complete. QC & outputs in %s", dirs['QC_metadata_denoised'])
 
