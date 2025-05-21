@@ -542,7 +542,7 @@ base_path/
    
    Rerun and you will see your filtering results in your dimension reduction render, which will be very helpful during phenotyping.
 9. Proceed to phenotyping using your preferred method. Use the Jupyter notebook file to load the phenotypes as obs in your adata object and make use of the random forest classifier to classify your 'hard to classify' cells! Add your metadata and your other omic data. Render additional QC images and explore your data!
-10. Not a pro in Scanpy and adata for analysis and visualization? The attached notebook will guide you to print a comprehensive summary of your adata object that can be interpreted by your favorite LLM. As your LLM is now aware of how to link all data, you can just instruct the chatbot in plain language your needs and it will give you Jupyter notebook snippets to project features on your dimension reduction plot, render tissue images color-coded for the various cell types, perform group comparisons, etc. Happy sciencing!
+10. Not a pro in Scanpy and adata for analysis and visualization? The attached notebook will guide you to print a comprehensive summary of your adata object that can be interpreted by your favorite LLM. As your LLM is now aware of how to link all data, you can just instruct the chatbot in plain language your needs and it will give you Jupyter notebook snippets to project features on your dimension reduction plot, render tissue images color-coded for the various cell types, perform group comparisons, etc [LLM instruction example prompt](#use-llm-to-ask-semantic-biological-questions). Happy sciencing!
 
 PRO-USAGE:
 11. subset markers used for normalization to for example housekeeper protein `--normalization_markers` (default is all)
@@ -869,7 +869,34 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 - `Label` = integer ID in segmentation masks (i.e., pixel regions in `.tiff`)
 
 ---
+## Use LLM to ask semantic biological questions
 
+**Example prompt to instruct on the structure and the conventions of your AnnData object**
+
+```yaml
+In my Jupyter notebook, I have loaded an AnnData object from the Unhuddle pipeline. I want you to understand the structure.
+
+AnnData object with n_obs × n_vars = 134299 × 39
+
+obs: 'Area', 'Perimeter', 'Convex_Area', 'Solidity', 'BoundingBox_Area', 'Extent', 'Orientation', 'Eccentricity', 'EquivDiameter', ...
+uns: 'X_source', 'dr_source', 'fov-list', 'marker-list', 'patient_id-list', 'spatial'
+obsm: 'X_spatial', 'X_tsne'
+layers: 'ExclMem_Sum', 'sum_original', 'sum_unhuddle', 'sum_unhuddle_denoised'
+
+# Special conventions:
+# cell_id = X.index → {fov}_{Label}
+# fov → {patient_id}_{FOVnumber}
+# Label → Integer ID from segmentation masks
+# NB obs contain "fov" and “patient_id” for keying
+
+# Example to access a segmentation mask for a specific FOV:
+segmentation_mask = adata.uns['spatial'][fov]['segmentation']
+
+# Example QC filtering:
+adata_filtered = adata[adata.obs["QC_final_keep"]].copy()
+```
+
+---
 
 ## 🧪 More info on Denoising vs Normalization — Strategy Overview
 
