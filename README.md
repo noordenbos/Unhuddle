@@ -618,7 +618,7 @@ All outputs are saved to the directory specified in `QC_metadata_denoised`.
 
 
 ### ⚠️ **Limitations**
-- For cohorts with fewer than 200,000 cells, denoising is less reliable and will be skipped unless you explicitly opt in.
+- For cohorts with fewer than 100,000 cells, denoising is less reliable and will be skipped unless you explicitly opt in.
 
 
 ---
