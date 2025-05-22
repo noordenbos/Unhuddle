@@ -11,7 +11,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 warnings.filterwarnings("ignore", message=".*converted to numpy array with dtype.*")
-
+logging.getLogger("anndata").setLevel(logging.WARNING)
 def load_df(path: str, fov: str) -> pd.DataFrame:
     df = pd.read_csv(path)
     df["Label"] = df["Label"].astype(int)
@@ -139,12 +139,17 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
                     f"skipping ExclMem_Sum layer."
                 )
 
+    obs_df = pd.concat(all_obs)
+    obs_df["fov"] = obs_df["fov"].astype("category")
+    obs_df["patient_id"] = obs_df["patient_id"].astype("category")
+
     adata = AnnData(
         X=np.vstack(all_X),
-        obs=pd.concat(all_obs),
+        obs=obs_df,
         var=pd.DataFrame(index=markers),
         obsm={"X_spatial": np.vstack(all_obsm_spatial)}
     )
+
 
     for key, arrays in all_layers.items():
         if arrays:

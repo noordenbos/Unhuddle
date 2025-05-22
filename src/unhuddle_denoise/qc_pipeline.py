@@ -350,23 +350,22 @@ def print_success_guide(dirs):
     """
     Print user-friendly summary of QC outputs using standard dirs structure.
     """
-    print("🎉 QC pipeline completed successfully! Here are your visual and numeric outputs:")
+    print(f"🎉 QC pipeline completed successfully! Here are your visual and numeric outputs: {dirs['QC_filtering']}")
 
-    print(f" - Density maps:           {dirs['QC_density']}")
-    print(f" - Segmentation overlays:  {dirs['QC_segmentation']}")
-    print(f" - Storyboards:            {dirs['QC_storyboards']}")
+    #print(f" - Including Segmentation overlays:  {dirs['QC_segmentation']}")
+    #print(f" - Storyboards:            {dirs['QC_storyboards']}")
 
-    dr_plot = os.path.join(dirs["QC_filtering"], 'dr_qc.png')
-    if os.path.exists(dr_plot):
-        print(f" - Dimension Reduction QC plot:      {dr_plot}")
+    #dr_plot = os.path.join(dirs["QC_filtering"], 'dr_qc.png')
+    #if os.path.exists(dr_plot):
+    #    print(f" - Dimension Reduction QC plot:      {dr_plot}")
 
-    overall_stats = os.path.join(dirs["QC_filtering"], 'overall_stats.csv')
-    if os.path.exists(overall_stats):
-        print(f" - Overall filtering stats CSV:      {overall_stats}")
+    #overall_stats = os.path.join(dirs["QC_filtering"], 'overall_stats.csv')
+    #if os.path.exists(overall_stats):
+    #    print(f" - Overall filtering stats CSV:      {overall_stats}")
 
-    per_fov_stats = os.path.join(dirs["QC_filtering"], 'per_fov_stats.csv')
-    if os.path.exists(per_fov_stats):
-        print(f" - Per-FOV filtering stats CSV:      {per_fov_stats}")
+    #per_fov_stats = os.path.join(dirs["QC_filtering"], 'per_fov_stats.csv')
+    #if os.path.exists(per_fov_stats):
+    #    print(f" - Per-FOV filtering stats CSV:      {per_fov_stats}")
 
 
 
@@ -674,11 +673,12 @@ def run_qc_from_memory(args, adata, dirs):
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     adata.write_h5ad(out_path)
     logger.info(f'💾 Saved full QC-flagged AnnData: {out_path}')
-    print(f'✅ Saved full QC-flagged AnnData: {out_path}')
+    print(f'\n✅  Saved full QC-flagged AnnData: {out_path}')
+    print(f"🎉 QC filtering completed successfully! Here are your visual and numeric outputs: {dirs['QC_filtering']}\n")
 
     # ── 10. Final Print Summary ───────────────────────────────────────────────────
     del adata
-    print_success_guide(dirs)
+    #print_success_guide(dirs)
 
 
 
