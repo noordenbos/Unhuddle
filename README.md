@@ -898,69 +898,23 @@ adata_filtered = adata[adata.obs["QC_final_keep"]].copy()
 
 ---
 
-## 🧪 More info on Denoising vs Normalization — Strategy Overview
 
-UNHUDDLE supports both **denoising** and **normalization** as modular steps. While they are often used together to stabilize and compare marker expression levels, they serve different goals and can be used independently depending on your analysis needs.
-
----
-
-### 🧽 Denoising (Optional — `--use_denoised`)
-
-Biological signal from cell surface markers can be confounded by area-dependent **background accumulation**, particularly in large or irregularly shaped cells. UNHUDDLE addresses this by modeling per-marker intensity as a function of cell area:
-
-- **Small-area cells** define a **signal cone** with high-confidence expression.
-- **Large-area cells** define a **noise cone** representing background accumulation.
-- A **piecewise linear model** is fit to both cones, estimating the degree to which intensity scales with area.
-- From this, **denoised reallocation factors** are derived and applied per cell to suppress nonspecific signal.
-
-The denoising step is optional and triggered with `--use_denoised`. For small cohorts (e.g., <200,000 cells), the pipeline will prompt the user before proceeding with denoising.
-
-**Output:**
-- Denoised values are included as:
-  - `*_FinalDenoised_Intensity` (in `protein_features`)
-  - `sum_denoised` (in the final AnnData `.layers` dictionary)
-
-🖼 Visualization:
-- Cohort-level hexbin plots showing the model fit, anchor points, and intensity vs. area profiles per marker
-- Exported to `signal_noise_qc.pdf`
-
----
-
-### 🎚 Phenotype Marker Normalization Strategy (not yet implemented in the pipeline)
-
-The per phenotype marker normalization is meant to compare certain functional marker across cell types. As the claim on intensity may vary quite a bit between cell types (Treg for example in the demodata can use CD45, CD7, CD3, CD4, FOXP3; while a dendritic cell may only use CD11c, that introduce bias precluding interpretation. However if you would want to compare Tregs between areas or patients the per total protein normalization suffices and correct efficiently for overall staining intensity between fovs and for cell size. 
-
-After raw or denoised marker intensities are computed, UNHUDDLE applies a **normalization procedure** to harmonize expression across cells:
-
-1. **Normalization Factor Calculation**:
-   - A user-defined set of `--normalization_markers` (e.g., CD45, Vimentin) is used.
-   - The top 4 highest-expressing markers (per cell) are averaged to compute a **per-cell normalization factor**.
-
-2. **Rescaling**:
-   - All marker intensities are divided by this factor (to yield normalized expression).
-   - Each marker is then scaled to the `[0.1, 99.9]` percentile range across the cohort to reduce the influence of outliers.
-
-**Output:**
-- Final normalized values per marker per cell:
-  - `sum_unhuddle_normalized`, `sum_original_normalized`, or `sum_denoised_normalized` (via `.layers`)
-  - Corresponding raw values are preserved in `.layers` and CSV outputs
-
-🖼 Visualization:
-- Per-marker before/after normalization scatter plots
-- Density curves and range histograms
-- Saved in `qc_normalization_plots/`
-
----
 
 ### ⚙️ User Control and Alternatives
 
-If preferred, users can **bypass cohort-wide normalization** and apply their own scaling by combining raw intensity layers with cell area:
+If preferred, users can **bypass cohort-wide normalization** and apply their own normalization or scaling by accessing the unhuddled sum intensity layer:
 
 ```python
-# Simple per-area normalization
-adata.layers["sum_unhuddle_per_area"] = adata.layers["sum_unhuddle"] / adata.obs["Area"].values[:, None]
-adata.X = adata.layers["sum_unhuddle_per_area"].copy()
-adata.uns["X_source"] = "sum_unhuddle_per_area"
+# Set other layer as the main data matrix (X)
+
+#save current matrix in layer:
+adata.layers["normalized_unhuddle"] = adata.X
+
+#set sum_unhuddle layer in X:
+adata.X = adata.layers["sum_unhuddle"].copy()
+
+#update the the tag X_source declaring what is in X
+adata.uns["X_source"] = "sum_unhuddle"
 ```
 This provides a simple per-unit-area normalization, which may be preferable in specific use cases.
 
