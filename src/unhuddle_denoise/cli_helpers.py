@@ -38,8 +38,17 @@ def get_git_info():
             remote_info = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], 
                                                 stderr=subprocess.DEVNULL).strip().decode('utf-8')
             remote_branch = remote_info
+            
+            # Extract remote name and get its URL
+            remote_name = remote_info.split('/')[0]  # e.g., "origin" from "origin/main"
+            try:
+                remote_url = subprocess.check_output(['git', 'remote', 'get-url', remote_name], 
+                                                   stderr=subprocess.DEVNULL).strip().decode('utf-8')
+            except subprocess.CalledProcessError:
+                remote_url = "N/A (cannot get remote URL)"
         except subprocess.CalledProcessError:
             remote_branch = "N/A (no upstream branch)"
+            remote_url = "N/A (no upstream branch)"
         
         # Get local vs remote status
         try:
@@ -65,9 +74,9 @@ def get_git_info():
         except subprocess.CalledProcessError:
             sync_status = "N/A (cannot determine)"
             
-        return commit, branch, tag, status, remote_branch, sync_status
+        return commit, branch, tag, status, remote_branch, remote_url, sync_status
     except (subprocess.CalledProcessError, FileNotFoundError):
-        return "N/A", "N/A", "N/A", "N/A (git not found or not a git repo)", "N/A", "N/A"
+        return "N/A", "N/A", "N/A", "N/A (git not found or not a git repo)", "N/A", "N/A", "N/A"
 
 def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> None:
     """
@@ -124,13 +133,14 @@ def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> Non
         root.info(f"    Working directory: {os.getcwd()}")
         
         # Add git info
-        commit, branch, tag, status, remote_branch, sync_status = get_git_info()
+        commit, branch, tag, status, remote_branch, remote_url, sync_status = get_git_info()
         root.info("📦 Version Control:")
         root.info(f"    Commit: {commit}")
         root.info(f"    Branch: {branch}")
         root.info(f"    Tag: {tag}")
         root.info(f"    Status: {status}")
         root.info(f"    Remote: {remote_branch}")
+        root.info(f"    Remote URL: {remote_url}")
         root.info(f"    Sync: {sync_status}")
 
         root.info(f"📁 Full pipeline log will be saved to: {log_path}")
