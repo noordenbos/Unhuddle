@@ -32,10 +32,42 @@ def get_git_info():
             status = "dirty" if dirty else "clean"
         except subprocess.CalledProcessError:
             status = "unknown"
+        
+        # Get remote tracking information
+        try:
+            remote_info = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], 
+                                                stderr=subprocess.DEVNULL).strip().decode('utf-8')
+            remote_branch = remote_info
+        except subprocess.CalledProcessError:
+            remote_branch = "N/A (no upstream branch)"
+        
+        # Get local vs remote status
+        try:
+            local_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip().decode('utf-8')
+            remote_commit = subprocess.check_output(['git', 'rev-parse', remote_info], 
+                                                  stderr=subprocess.DEVNULL).strip().decode('utf-8')
             
-        return commit, branch, tag, status
+            if local_commit == remote_commit:
+                sync_status = "up-to-date"
+            else:
+                # Check if local is ahead/behind
+                ahead = subprocess.check_output(['git', 'rev-list', '--count', f'{remote_info}..HEAD'], 
+                                              stderr=subprocess.DEVNULL).strip().decode('utf-8')
+                behind = subprocess.check_output(['git', 'rev-list', '--count', f'HEAD..{remote_info}'], 
+                                               stderr=subprocess.DEVNULL).strip().decode('utf-8')
+                
+                if ahead != '0' and behind != '0':
+                    sync_status = f"diverged (+{ahead}/-{behind})"
+                elif ahead != '0':
+                    sync_status = f"ahead by {ahead}"
+                else:
+                    sync_status = f"behind by {behind}"
+        except subprocess.CalledProcessError:
+            sync_status = "N/A (cannot determine)"
+            
+        return commit, branch, tag, status, remote_branch, sync_status
     except (subprocess.CalledProcessError, FileNotFoundError):
-        return "N/A", "N/A", "N/A", "N/A (git not found or not a git repo)"
+        return "N/A", "N/A", "N/A", "N/A (git not found or not a git repo)", "N/A", "N/A"
 
 def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> None:
     """
@@ -92,12 +124,14 @@ def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> Non
         root.info(f"    Working directory: {os.getcwd()}")
         
         # Add git info
-        commit, branch, tag, status = get_git_info()
+        commit, branch, tag, status, remote_branch, sync_status = get_git_info()
         root.info("📦 Version Control:")
         root.info(f"    Commit: {commit}")
         root.info(f"    Branch: {branch}")
         root.info(f"    Tag: {tag}")
         root.info(f"    Status: {status}")
+        root.info(f"    Remote: {remote_branch}")
+        root.info(f"    Sync: {sync_status}")
 
         root.info(f"📁 Full pipeline log will be saved to: {log_path}")
 
