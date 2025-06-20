@@ -104,12 +104,27 @@ def integrate_intensities_for_interactions(fov_folder, interactions):
 
 
 def compute_reallocation_with_checks(interactions, protein_features, tol=1e-6, use_denoised=True):
+    """
+    DEPRECATED: This function has been replaced by compute_reallocation_original() and compute_reallocation_denoised().
+    
+    The old implementation caused hidden interactions between original and denoised branches.
+    Please use the new separate functions for complete isolation.
+    """
     import logging
     import numpy as np
     from collections import defaultdict
+    import warnings
+
+    warnings.warn(
+        "compute_reallocation_with_checks is deprecated. "
+        "Use compute_reallocation_original() for canonical branch and "
+        "compute_reallocation_denoised() for experimental branch.",
+        DeprecationWarning,
+        stacklevel=2
+    )
 
     logger = logging.getLogger(__name__)
-    logger.debug("🧪 compute_reallocation_with_checks has been entered")
+    logger.debug("🧪 compute_reallocation_with_checks has been entered (DEPRECATED)")
 
     denoised_intensity = {}
     mean_intensity = {}
@@ -195,6 +210,185 @@ def compute_reallocation_with_checks(interactions, protein_features, tol=1e-6, u
                 logger.error(f"❌ Error during reallocation at {coord}, marker {marker}: {e}")
 
     return reallocation
+
+
+def compute_reallocation_original(interactions, protein_features, tol=1e-6):
+    """
+    Compute reallocation using ONLY original mean intensities.
+    This ensures sum_unhuddle is always consistent regardless of denoising settings.
+    """
+    import logging
+    import numpy as np
+    from collections import defaultdict
+
+    logger = logging.getLogger(__name__)
+    logger.debug("🧪 compute_reallocation_original: Using original intensities only")
+
+    mean_intensity = {}
+
+    for _, row in protein_features.iterrows():
+        for col in row.index:
+            if col.endswith("_ExclusionMembrane_Mean_Intensity"):
+                marker = col.replace("_ExclusionMembrane_Mean_Intensity", "")
+                mean_intensity[(row["Label"], marker)] = row[col]
+
+    def get_marker_intensity(label, marker):
+        val = mean_intensity.get((label, marker), None)
+        try:
+            out = max(float(val), 0.0)
+            if out == 0.0 and (val is None or (isinstance(val, float) and np.isnan(val))):
+                logger.debug(f"⚠️ Intensity missing or NaN for {label}, {marker}")
+            return out
+        except Exception as e:
+            logger.warning(f"⚠️ Invalid intensity for {label}, {marker}: {val} ({e})")
+            return 0.0
+
+    reallocation = defaultdict(lambda: {
+        "taken_intensity": defaultdict(float),
+        "reallocated_intensity": defaultdict(float)
+    })
+
+    for coord, data in interactions.items():
+        if "intensities" not in data:
+            continue
+
+        interaction_type = data["type"]
+        markers = [m for m in data["intensities"].keys() if "DNA" not in m and "Histone" not in m]
+
+        if interaction_type == "border":
+            current = data["current"]
+            involved = [current] + data["neighbors"]
+        else:
+            current = None
+            involved = data["interacts_with"]
+
+        for marker in markers:
+            values = [interactions[coord]["intensities"].get(marker, 0.0)]
+            total = sum(values)
+
+            if total == 0:
+                continue  # skip unnecessary float ops
+
+            weights = []
+            valid_involved = []
+            for i in involved:
+                val = get_marker_intensity(i, marker)
+                weights.append(val)
+                valid_involved.append(i)
+
+            try:
+                denom = sum(weights)
+
+                if denom > 0:
+                    logger.debug(
+                        f"🔢 Marker '{marker}' at {coord}: Weights = {weights}, Denom = {denom:.4f}, Total = {total:.2f}"
+                    )
+                    for i, w in zip(valid_involved, weights):
+                        frac = w / denom
+                        logger.debug(
+                            f"↪️ Redistributing {frac:.4f} * {total:.2f} → Label={i}, marker={marker}"
+                        )
+                        reallocation[i]["reallocated_intensity"][marker] += frac * total
+                        if interaction_type == "border" and i == current:
+                            reallocation[i]["taken_intensity"][marker] += total
+                else:
+                    if interaction_type == "border" and isinstance(current, int):
+                        reallocation[current]["reallocated_intensity"][marker] += total
+                        reallocation[current]["taken_intensity"][marker] += total
+            except Exception as e:
+                logger.error(f"❌ Error during reallocation at {coord}, marker {marker}: {e}")
+
+    return reallocation
+
+
+def compute_reallocation_denoised(interactions, protein_features, tol=1e-6):
+    """
+    Compute reallocation using ONLY denoised intensities.
+    This is used for the experimental denoised branch only.
+    """
+    import logging
+    import numpy as np
+    from collections import defaultdict
+
+    logger = logging.getLogger(__name__)
+    logger.debug("🧪 compute_reallocation_denoised: Using denoised intensities only")
+
+    denoised_intensity = {}
+
+    for _, row in protein_features.iterrows():
+        for col in row.index:
+            if col.endswith("_ExclusionMembrane_Sum_Intensity_denoised"):
+                marker = col.replace("_ExclusionMembrane_Sum_Intensity_denoised", "")
+                denoised_intensity[(row["Label"], marker)] = row[col]
+
+    def get_marker_intensity(label, marker):
+        val = denoised_intensity.get((label, marker), None)
+        try:
+            out = max(float(val), 0.0)
+            if out == 0.0 and (val is None or (isinstance(val, float) and np.isnan(val))):
+                logger.debug(f"⚠️ Denoised intensity missing or NaN for {label}, {marker}")
+            return out
+        except Exception as e:
+            logger.warning(f"⚠️ Invalid denoised intensity for {label}, {marker}: {val} ({e})")
+            return 0.0
+
+    reallocation = defaultdict(lambda: {
+        "taken_intensity": defaultdict(float),
+        "reallocated_intensity": defaultdict(float)
+    })
+
+    for coord, data in interactions.items():
+        if "intensities" not in data:
+            continue
+
+        interaction_type = data["type"]
+        markers = [m for m in data["intensities"].keys() if "DNA" not in m and "Histone" not in m]
+
+        if interaction_type == "border":
+            current = data["current"]
+            involved = [current] + data["neighbors"]
+        else:
+            current = None
+            involved = data["interacts_with"]
+
+        for marker in markers:
+            values = [interactions[coord]["intensities"].get(marker, 0.0)]
+            total = sum(values)
+
+            if total == 0:
+                continue  # skip unnecessary float ops
+
+            weights = []
+            valid_involved = []
+            for i in involved:
+                val = get_marker_intensity(i, marker)
+                weights.append(val)
+                valid_involved.append(i)
+
+            try:
+                denom = sum(weights)
+
+                if denom > 0:
+                    logger.debug(
+                        f"🔢 Marker '{marker}' at {coord}: Weights = {weights}, Denom = {denom:.4f}, Total = {total:.2f}"
+                    )
+                    for i, w in zip(valid_involved, weights):
+                        frac = w / denom
+                        logger.debug(
+                            f"↪️ Redistributing {frac:.4f} * {total:.2f} → Label={i}, marker={marker}"
+                        )
+                        reallocation[i]["reallocated_intensity"][marker] += frac * total
+                        if interaction_type == "border" and i == current:
+                            reallocation[i]["taken_intensity"][marker] += total
+                else:
+                    if interaction_type == "border" and isinstance(current, int):
+                        reallocation[current]["reallocated_intensity"][marker] += total
+                        reallocation[current]["taken_intensity"][marker] += total
+            except Exception as e:
+                logger.error(f"❌ Error during reallocation at {coord}, marker {marker}: {e}")
+
+    return reallocation
+
 
 def compute_solo_border_pixels(cell_mask, membrane_mask, fov_folder, markers):
     logger = logging.getLogger(__name__)

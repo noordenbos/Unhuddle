@@ -12,6 +12,8 @@ from unhuddle_denoise.interactions import (
     merge_interactions,
     integrate_intensities_for_interactions,
     compute_reallocation_with_checks,
+    compute_reallocation_original,
+    compute_reallocation_denoised,
     settle_debts_intensity,
     settle_debts_from_residuals
 )
@@ -153,33 +155,42 @@ def process_fov_reallocation_only(
         merged = merge_interactions(border_int, background_int)
         all_interactions = integrate_intensities_for_interactions(fov_path, merged)
 
-        # ── Compute reallocation ────────────────────────────────────────
-        reallocation = compute_reallocation_with_checks(
-            all_interactions, protein_features, tol=1e-6, use_denoised=use_denoised
+        # ── Canonical: Always run reallocation with original intensities ──
+        logger.info(f"🔁 Running canonical reallocation (original intensities) for FOV: {fov_path}")
+        reallocation_original = compute_reallocation_original(
+            all_interactions, protein_features, tol=1e-6
         )
-
-        # ── Optional: Denoised Reallocation ─────────────────────────────
-        if use_denoised and "unhuddle_denoised_sum" in dirs and "unhuddle_denoised_norm" in dirs:
-            logger.info(f"🔁 Running denoised reallocation for FOV: {fov_path}")
-            denoised_df = settle_debts_from_residuals(
-                fov_folder=fov_path,
-                reallocation=reallocation,
-                protein_features=protein_features,
-                cell_mask=cell_mask,
-                membrane_mask=membrane_mask,
-                sensor_markers=markers_for_normalization,
-                dirs=dirs
-            )
-
-            result["intensity_settled_denoised"] = True
-        else:
-            logger.info(f"ℹ️ Skipping denoised reallocation for {fov_path} — flag or output dirs not set.")
-
-        # ── Canonical: always run ──────────────────────────────────────
         original_sum_df, corrected_sum_df = settle_debts_intensity(
-            fov_path, reallocation, protein_features, dirs
+            fov_path, reallocation_original, protein_features, dirs
         )
         result["intensity_settled"] = True
+
+        # ── Optional: Denoised Reallocation (separate branch) ─────────────
+        if use_denoised and "unhuddle_denoised_sum" in dirs and "unhuddle_denoised_norm" in dirs:
+            logger.info(f"🔁 Running experimental denoised reallocation for FOV: {fov_path}")
+            
+            # Check if denoised data is available
+            denoised_cols = [c for c in protein_features.columns if c.endswith("_ExclusionMembrane_Sum_Intensity_denoised")]
+            if not denoised_cols:
+                logger.warning(f"⚠️ No denoised columns found for {fov_path}, skipping denoised reallocation")
+                result["denoised_skipped"] = "no_denoised_columns"
+            else:
+                # Use separate reallocation function with denoised intensities
+                reallocation_denoised = compute_reallocation_denoised(
+                    all_interactions, protein_features, tol=1e-6
+                )
+                denoised_df = settle_debts_from_residuals(
+                    fov_folder=fov_path,
+                    reallocation=reallocation_denoised,
+                    protein_features=protein_features,
+                    cell_mask=cell_mask,
+                    membrane_mask=membrane_mask,
+                    sensor_markers=markers_for_normalization,
+                    dirs=dirs
+                )
+                result["intensity_settled_denoised"] = True
+        else:
+            logger.info(f"ℹ️ Skipping denoised reallocation for {fov_path} — flag or output dirs not set.")
 
     except Exception as e:
         logger.error(f"❌ Reallocation failed for {fov_path}: {e}")

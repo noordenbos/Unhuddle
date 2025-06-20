@@ -193,7 +193,7 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--denoise_method",
         choices=["percentile", "noisecone"],
-        default="percentile",
+        default="noisecone",
         help="Denoise on general lower percentile per size bin (percentile) or regression on large noisy cells (noisecone). Default: percentile"
     )
 
