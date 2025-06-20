@@ -22,7 +22,9 @@ def get_git_info():
         commit = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip().decode('utf-8')
         branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).strip().decode('utf-8')
         try:
-            tag = subprocess.check_output(['git', 'describe', '--tags', '--exact-match']).strip().decode('utf-8')
+            # Suppress stderr to avoid "fatal: no tag exactly matches" message
+            tag = subprocess.check_output(['git', 'describe', '--tags', '--exact-match'], 
+                                        stderr=subprocess.DEVNULL).strip().decode('utf-8')
         except subprocess.CalledProcessError:
             tag = "N/A (not on a tag)"
         try:
