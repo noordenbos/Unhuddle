@@ -15,7 +15,9 @@ from unhuddle_denoise.interactions import (
     compute_reallocation_original,
     compute_reallocation_denoised,
     settle_debts_intensity,
-    settle_debts_from_residuals
+    settle_debts_from_residuals,
+    save_reallocation_debug_data,
+    compute_solo_border_pixels
 )
 from unhuddle_denoise.deepcell import create_deepcell_mask_overlay, process_deepcell_overlay
 
@@ -127,7 +129,8 @@ def process_fov_reallocation_only(
     dirs,
     markers_for_normalization,
     use_denoised,
-    log_level
+    log_level,
+    save_reallocation_debug=False
 ):
     from unhuddle_denoise.cli_helpers import setup_logging
     setup_logging(log_level)
@@ -166,6 +169,9 @@ def process_fov_reallocation_only(
         result["intensity_settled"] = True
 
         # ── Optional: Denoised Reallocation (separate branch) ─────────────
+        reallocation_denoised = None
+        solo_border_intensity = None
+        
         if use_denoised and "unhuddle_denoised_sum" in dirs and "unhuddle_denoised_norm" in dirs:
             logger.info(f"🔁 Running experimental denoised reallocation for FOV: {fov_path}")
             
@@ -179,6 +185,11 @@ def process_fov_reallocation_only(
                 reallocation_denoised = compute_reallocation_denoised(
                     all_interactions, protein_features, tol=1e-6
                 )
+                
+                # Get solo border pixel data
+                markers = [c.replace("_ExclusionMembrane_Sum_Intensity_denoised", "") for c in denoised_cols]
+                solo_border_intensity = compute_solo_border_pixels(cell_mask, membrane_mask, fov_path, markers)
+                
                 denoised_df = settle_debts_from_residuals(
                     fov_folder=fov_path,
                     reallocation=reallocation_denoised,
@@ -191,6 +202,24 @@ def process_fov_reallocation_only(
                 result["intensity_settled_denoised"] = True
         else:
             logger.info(f"ℹ️ Skipping denoised reallocation for {fov_path} — flag or output dirs not set.")
+
+        # ── Save debug data if requested ──────────────────────────────────
+        if save_reallocation_debug:
+            fov_name = os.path.basename(fov_path)
+            output_dir = dirs.get("QC_reallocation")
+            if output_dir:
+                logger.info(f"💾 Saving reallocation debug data for FOV: {fov_name}")
+                save_reallocation_debug_data(
+                    fov_name=fov_name,
+                    reallocation_original=reallocation_original,
+                    reallocation_denoised=reallocation_denoised,
+                    solo_border_intensity=solo_border_intensity,
+                    interactions=all_interactions,
+                    output_dir=output_dir
+                )
+                result["debug_data_saved"] = True
+            else:
+                logger.warning(f"⚠️ QC_reallocation directory not found, skipping debug data save")
 
     except Exception as e:
         logger.error(f"❌ Reallocation failed for {fov_path}: {e}")

@@ -7,6 +7,16 @@ import pandas as pd
 from collections import defaultdict, Counter
 from skimage import io
 import logging
+import sys
+import re
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from tqdm import tqdm
+from datetime import datetime
+from typing import Optional, List, Dict
+from pathlib import Path
+import platform
+import json
+
 logger = logging.getLogger(__name__)
 
 
@@ -432,8 +442,6 @@ def compute_solo_border_pixels(cell_mask, membrane_mask, fov_folder, markers):
     return result
 
 
-
-
 def settle_debts_intensity(fov_folder, reallocation, protein_features,
                            dirs):
     fov_name = os.path.basename(fov_folder)
@@ -506,4 +514,158 @@ def settle_debts_from_residuals(
 
 
     return corrected_df
+
+
+def save_reallocation_debug_data(
+    fov_name: str,
+    reallocation_original: dict,
+    reallocation_denoised: Optional[dict] = None,
+    solo_border_intensity: Optional[dict] = None,
+    interactions: Optional[dict] = None,
+    output_dir: str = None
+) -> None:
+    """
+    Save reallocation dictionaries and solo border pixel data to JSON files for debugging and validation.
+    
+    Parameters:
+    -----------
+    fov_name : str
+        Name of the FOV being processed
+    reallocation_original : dict
+        Reallocation dictionary from canonical branch
+    reallocation_denoised : Optional[dict]
+        Reallocation dictionary from experimental branch (if --use_denoised=True)
+    solo_border_intensity : Optional[dict]
+        Solo border pixel intensity data (if --use_denoised=True)
+    interactions : Optional[dict]
+        Raw interaction data for reference
+    output_dir : str
+        Directory to save the JSON files
+    """
+    if output_dir is None:
+        logger.warning("⚠️ No output directory specified for reallocation debug data")
+        return
+    
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Convert defaultdict to regular dict for JSON serialization
+    def convert_defaultdict(obj):
+        if isinstance(obj, defaultdict):
+            return dict(obj)
+        elif isinstance(obj, dict):
+            return {k: convert_defaultdict(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [convert_defaultdict(item) for item in obj]
+        else:
+            return obj
+    
+    # Prepare canonical reallocation data
+    canonical_data = {
+        "fov_name": fov_name,
+        "timestamp": datetime.now().isoformat(),
+        "reallocation_type": "canonical",
+        "reallocation_data": convert_defaultdict(reallocation_original),
+        "summary": {
+            "total_cells": len(reallocation_original),
+            "cells_with_taken_intensity": sum(1 for cell_data in reallocation_original.values() 
+                                            if any(cell_data["taken_intensity"].values())),
+            "cells_with_reallocated_intensity": sum(1 for cell_data in reallocation_original.values() 
+                                                  if any(cell_data["reallocated_intensity"].values())),
+            "total_taken_intensity": sum(sum(cell_data["taken_intensity"].values()) 
+                                       for cell_data in reallocation_original.values()),
+            "total_reallocated_intensity": sum(sum(cell_data["reallocated_intensity"].values()) 
+                                             for cell_data in reallocation_original.values())
+        }
+    }
+    
+    # Save canonical reallocation data
+    canonical_path = os.path.join(output_dir, f"{fov_name}_canonical_reallocation.json")
+    with open(canonical_path, 'w') as f:
+        json.dump(canonical_data, f, indent=2, default=str)
+    logger.info(f"💾 Saved canonical reallocation data to: {canonical_path}")
+    
+    # Prepare and save denoised reallocation data if available
+    if reallocation_denoised is not None:
+        denoised_data = {
+            "fov_name": fov_name,
+            "timestamp": datetime.now().isoformat(),
+            "reallocation_type": "denoised",
+            "reallocation_data": convert_defaultdict(reallocation_denoised),
+            "summary": {
+                "total_cells": len(reallocation_denoised),
+                "cells_with_taken_intensity": sum(1 for cell_data in reallocation_denoised.values() 
+                                                if any(cell_data["taken_intensity"].values())),
+                "cells_with_reallocated_intensity": sum(1 for cell_data in reallocation_denoised.values() 
+                                                      if any(cell_data["reallocated_intensity"].values())),
+                "total_taken_intensity": sum(sum(cell_data["taken_intensity"].values()) 
+                                           for cell_data in reallocation_denoised.values()),
+                "total_reallocated_intensity": sum(sum(cell_data["reallocated_intensity"].values()) 
+                                                 for cell_data in reallocation_denoised.values())
+            }
+        }
+        
+        denoised_path = os.path.join(output_dir, f"{fov_name}_denoised_reallocation.json")
+        with open(denoised_path, 'w') as f:
+            json.dump(denoised_data, f, indent=2, default=str)
+        logger.info(f"💾 Saved denoised reallocation data to: {denoised_path}")
+    
+    # Prepare and save solo border pixel data if available
+    if solo_border_intensity is not None:
+        solo_data = {
+            "fov_name": fov_name,
+            "timestamp": datetime.now().isoformat(),
+            "data_type": "solo_border_pixels",
+            "solo_border_data": convert_defaultdict(solo_border_intensity),
+            "summary": {
+                "total_cells_with_solo_pixels": len(solo_border_intensity),
+                "total_solo_pixel_intensity": sum(sum(cell_data.values()) 
+                                                for cell_data in solo_border_intensity.values())
+            }
+        }
+        
+        solo_path = os.path.join(output_dir, f"{fov_name}_solo_border_pixels.json")
+        with open(solo_path, 'w') as f:
+            json.dump(solo_data, f, indent=2, default=str)
+        logger.info(f"💾 Saved solo border pixel data to: {solo_path}")
+    
+    # Prepare and save interaction data if available (for reference)
+    if interactions is not None:
+        # Sample a subset of interactions to avoid huge files
+        sample_size = min(1000, len(interactions))
+        sample_keys = list(interactions.keys())[:sample_size]
+        sample_interactions = {k: interactions[k] for k in sample_keys}
+        
+        interaction_data = {
+            "fov_name": fov_name,
+            "timestamp": datetime.now().isoformat(),
+            "data_type": "interactions_sample",
+            "total_interactions": len(interactions),
+            "sample_size": sample_size,
+            "interaction_sample": convert_defaultdict(sample_interactions)
+        }
+        
+        interaction_path = os.path.join(output_dir, f"{fov_name}_interactions_sample.json")
+        with open(interaction_path, 'w') as f:
+            json.dump(interaction_data, f, indent=2, default=str)
+        logger.info(f"💾 Saved interaction sample data to: {interaction_path}")
+    
+    # Create a summary file
+    summary_data = {
+        "fov_name": fov_name,
+        "timestamp": datetime.now().isoformat(),
+        "files_generated": {
+            "canonical_reallocation": os.path.basename(canonical_path),
+            "denoised_reallocation": os.path.basename(denoised_path) if reallocation_denoised else None,
+            "solo_border_pixels": os.path.basename(solo_path) if solo_border_intensity else None,
+            "interactions_sample": os.path.basename(interaction_path) if interactions else None
+        },
+        "canonical_summary": canonical_data["summary"],
+        "denoised_summary": denoised_data["summary"] if reallocation_denoised else None,
+        "solo_border_summary": solo_data["summary"] if solo_border_intensity else None
+    }
+    
+    summary_path = os.path.join(output_dir, f"{fov_name}_reallocation_summary.json")
+    with open(summary_path, 'w') as f:
+        json.dump(summary_data, f, indent=2, default=str)
+    logger.info(f"💾 Saved reallocation summary to: {summary_path}")
 

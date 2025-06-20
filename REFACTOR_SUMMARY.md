@@ -105,4 +105,92 @@ Denoised Intensities → compute_reallocation_denoised() → sum_unhuddle_denois
 1. **Function Naming**: Consider renaming functions to be more descriptive (e.g., `compute_reallocation_canonical`)
 2. **Configuration**: Consider making the separation more explicit in configuration files
 3. **Documentation**: Update user documentation to reflect the new architecture
-4. **Validation**: Add automated tests to prevent regression of this issue 
+4. **Validation**: Add automated tests to prevent regression of this issue
+
+## New Debug Feature: Reallocation Data Export
+
+### **CLI Flag**: `--save_reallocation_debug`
+
+A new optional CLI flag has been added to save detailed reallocation data for debugging and validation purposes.
+
+### **What Gets Saved:**
+
+When `--save_reallocation_debug` is enabled, the following JSON files are created in `QC/reallocation/`:
+
+1. **`{fov}_canonical_reallocation.json`**
+   - Complete reallocation dictionary from canonical branch
+   - Summary statistics (total cells, intensity amounts, etc.)
+   - Uses original intensities for weight calculation
+
+2. **`{fov}_denoised_reallocation.json`** (only when `--use_denoised=True`)
+   - Complete reallocation dictionary from experimental branch
+   - Summary statistics
+   - Uses denoised intensities for weight calculation
+
+3. **`{fov}_solo_border_pixels.json`** (only when `--use_denoised=True`)
+   - Solo border pixel intensity data
+   - Per-cell and per-marker breakdown
+
+4. **`{fov}_interactions_sample.json`**
+   - Sample of raw interaction data (first 1000 interactions)
+   - Useful for understanding the interaction computation
+
+5. **`{fov}_reallocation_summary.json`**
+   - Overview of all generated files
+   - Summary statistics from all branches
+
+### **Use Cases:**
+
+1. **Debugging**: Investigate unexpected reallocation results
+2. **Validation**: Compare reallocation between different runs
+3. **Research**: Analyze the reallocation process in detail
+4. **Documentation**: Provide evidence of reallocation behavior
+
+### **Example Usage:**
+
+```bash
+python -m unhuddle_denoise.cli \
+  --base_path /path/to/data \
+  --output_base_path /path/to/output \
+  --use_denoised \
+  --save_reallocation_debug \
+  --nuclear_markers DNA1 DNA2 \
+  --normalization_markers all
+```
+
+### **File Structure:**
+
+```
+QC/
+└── reallocation/
+    ├── FOV1_canonical_reallocation.json
+    ├── FOV1_denoised_reallocation.json
+    ├── FOV1_solo_border_pixels.json
+    ├── FOV1_interactions_sample.json
+    ├── FOV1_reallocation_summary.json
+    ├── FOV2_canonical_reallocation.json
+    └── ...
+```
+
+### **JSON Structure Example:**
+
+```json
+{
+  "fov_name": "FOV1",
+  "timestamp": "2024-01-15T10:30:00",
+  "reallocation_type": "canonical",
+  "reallocation_data": {
+    "1": {
+      "taken_intensity": {"CD3": 15.2, "CD8": 8.7},
+      "reallocated_intensity": {"CD3": 12.1, "CD8": 6.3}
+    }
+  },
+  "summary": {
+    "total_cells": 1500,
+    "cells_with_taken_intensity": 234,
+    "cells_with_reallocated_intensity": 567,
+    "total_taken_intensity": 1234.5,
+    "total_reallocated_intensity": 2345.6
+  }
+}
+``` 

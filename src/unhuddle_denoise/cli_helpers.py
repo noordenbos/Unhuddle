@@ -196,6 +196,11 @@ def parse_arguments() -> argparse.Namespace:
         default="noisecone",
         help="Denoise on general lower percentile per size bin (percentile) or regression on large noisy cells (noisecone). Default: percentile"
     )
+    parser.add_argument(
+        "--save_reallocation_debug",
+        action="store_true",
+        help="Save reallocation dictionaries and solo border pixel data to JSON files for debugging and validation"
+    )
 
     return parser.parse_args()
 
@@ -328,6 +333,9 @@ def setup_output_directories(output_base: str, args) -> dict:
         dirs["unhuddle_denoised_sum"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum")
         dirs["unhuddle_denoised_norm"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized")
         dirs["QC_metadata_denoised"] = os.path.join(output_base, "QC", "denoiser")
+
+    if getattr(args, "save_reallocation_debug", False):
+        dirs["QC_reallocation"] = os.path.join(dirs["QC"], "reallocation")
 
     # Actually create the folders
     for path in dirs.values():
@@ -465,6 +473,7 @@ def build_reallocation_args(fov: str, dirs: dict, args: argparse.Namespace):
         args.normalization_markers,
         args.use_denoised,
         args.log_level,
+        args.save_reallocation_debug,
     )
 
 
