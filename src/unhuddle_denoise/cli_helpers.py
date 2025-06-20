@@ -11,9 +11,29 @@ from datetime import datetime
 from typing import Optional, List, Dict
 from pathlib import Path
 import platform
+import subprocess
 
 
 _LOGGING_INITIALIZED = False
+
+def get_git_info():
+    """Fetches git commit, branch, and tag information."""
+    try:
+        commit = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip().decode('utf-8')
+        branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).strip().decode('utf-8')
+        try:
+            tag = subprocess.check_output(['git', 'describe', '--tags', '--exact-match']).strip().decode('utf-8')
+        except subprocess.CalledProcessError:
+            tag = "N/A (not on a tag)"
+        try:
+            dirty = subprocess.check_output(['git', 'status', '--porcelain']).strip().decode('utf-8')
+            status = "dirty" if dirty else "clean"
+        except subprocess.CalledProcessError:
+            status = "unknown"
+            
+        return commit, branch, tag, status
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return "N/A", "N/A", "N/A", "N/A (git not found or not a git repo)"
 
 def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> None:
     """
@@ -44,7 +64,7 @@ def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> Non
     # ── Patch console stream for Unicode safety ───────
     if hasattr(console_handler.stream, 'reconfigure'):
         try:
-            console_handler.stream.reconfigure(encoding='utf-8', errors='ignore')
+            console_handler.stream.reconfigure(encoding='utf-8', errors='ignore') # type: ignore
         except Exception:
             pass  # Safe fallback if reconfigure not supported
 
@@ -68,6 +88,15 @@ def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> Non
         root.info(f"    CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'not set')}")
         root.info(f"    NumPy version: {sys.modules.get('numpy', 'not loaded')}")
         root.info(f"    Working directory: {os.getcwd()}")
+        
+        # Add git info
+        commit, branch, tag, status = get_git_info()
+        root.info("📦 Version Control:")
+        root.info(f"    Commit: {commit}")
+        root.info(f"    Branch: {branch}")
+        root.info(f"    Tag: {tag}")
+        root.info(f"    Status: {status}")
+
         root.info(f"📁 Full pipeline log will be saved to: {log_path}")
 
     # ── Optional Library Tuning (DEBUG only) ──────────
@@ -220,6 +249,7 @@ def count_total_cells_from_csvs(csv_dir: str) -> int:
     Count the total number of cells in a folder containing per-FOV CSVs
     (each row corresponds to a cell; assumes header row is present).
     """
+    logger = logging.getLogger(__name__)
     total = 0
     csv_files = glob.glob(os.path.join(csv_dir, "*.csv"))
     for path in csv_files:
