@@ -170,6 +170,7 @@ def run_denoising_pipeline_on_dataframe(
     anchor_x: float = 0,
     anchor_y: float = 0,
     sd_multiplier: float = 3,
+    x_anchor_multiplier: float = -1.0,
     signal_q_low: float = 95,
     signal_q_high: float = 99.99,
     min_cells_per_bin: int = 10,
@@ -186,6 +187,7 @@ def run_denoising_pipeline_on_dataframe(
     - layer_suffix: Suffix for intensity columns in df.
     - anchor_x, anchor_y: Coordinates to anchor the noise regression line.
     - sd_multiplier: Multiplier for std dev to define high-morph cutoff.
+    - x_anchor_multiplier: Multiplier for std dev to calculate x-anchor. anchor_x = mean + multiplier * std.
     - signal_q_low, signal_q_high: Quantiles for selecting signal-range residuals.
     - min_cells_per_bin: Minimum cells required for regression.
     - min_area: Minimum morphological value to include.
@@ -219,6 +221,7 @@ def run_denoising_pipeline_on_dataframe(
                 "anchor_x": anchor_x,
                 "anchor_y": anchor_y,
                 "noise_q": noise_q,
+                "x_anchor_multiplier": x_anchor_multiplier,
             }
             continue
 
@@ -227,8 +230,8 @@ def run_denoising_pipeline_on_dataframe(
 
         morph_mean = np.mean(sorted_area)
         morph_std = np.std(sorted_area)
-        # Calculate anchor_x as (morph_mean - morph_std)
-        anchor_x = morph_mean #- morph_std
+        # Calculate anchor_x using the configurable multiplier
+        anchor_x = morph_mean + x_anchor_multiplier * morph_std
         anchor_y = 0
         morph_cutoff = morph_mean + sd_multiplier * morph_std
 
@@ -267,6 +270,7 @@ def run_denoising_pipeline_on_dataframe(
             "anchor_x": anchor_x,
             "anchor_y": anchor_y,
             "noise_q": noise_q,
+            "x_anchor_multiplier": x_anchor_multiplier,
         }
 
     return {"denoised_df": denoised_df, "metadata": metadata}
@@ -350,7 +354,13 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
         layer_suffix=layer_suffix,
         anchor_x=args.signal_anchor_x if hasattr(args, "signal_anchor_x") else 0,
         anchor_y=args.signal_anchor_y if hasattr(args, "signal_anchor_y") else 0,
-        # you can also pass other args here if desired
+        sd_multiplier=args.denoise_x_anchor_multiplier if hasattr(args, "denoise_x_anchor_multiplier") else 3,
+        x_anchor_multiplier=getattr(args, "denoise_x_anchor_multiplier", -1.0),
+        signal_q_low=signal_q_low,
+        signal_q_high=signal_q_high,
+        min_cells_per_bin=min_cells_per_bin,
+        min_area=min_area,
+        noise_q=noise_q,
     )
     denoised_df  = result["denoised_df"]
     metadata     = result["metadata"]
@@ -379,7 +389,7 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
     except Exception as e:
         logger.error("❌ Failed to save metadata: %s", e)
 
-    # 🚀 Step 4) Persist denoised columns back to each FOV’s protein CSV
+    # 🚀 Step 4) Persist denoised columns back to each FOV's protein CSV
     for fov_name, group in denoised_df.groupby("fov"):
         out_path = os.path.join(protein_dir, f"{fov_name}.csv")
         if not os.path.exists(out_path):

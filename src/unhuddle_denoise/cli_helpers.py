@@ -272,6 +272,12 @@ def parse_arguments() -> argparse.Namespace:
         help="Denoise on general lower percentile per size bin (percentile) or regression on large noisy cells (noisecone). Default: percentile"
     )
     parser.add_argument(
+        "--denoise_x_anchor_multiplier",
+        type=float,
+        default=-1.0,
+        help="Multiplier for standard deviation to calculate x-anchor in noise cone denoising. anchor_x = mean + multiplier * std. Default: -1.0 (1 std below mean)"
+    )
+    parser.add_argument(
         "--save_reallocation_debug",
         action="store_true",
         help="Save reallocation dictionaries and solo border pixel data to JSON files for debugging and validation"
