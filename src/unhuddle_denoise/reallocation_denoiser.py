@@ -354,13 +354,13 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
         layer_suffix=layer_suffix,
         anchor_x=args.signal_anchor_x if hasattr(args, "signal_anchor_x") else 0,
         anchor_y=args.signal_anchor_y if hasattr(args, "signal_anchor_y") else 0,
-        sd_multiplier=args.denoise_x_anchor_multiplier if hasattr(args, "denoise_x_anchor_multiplier") else 3,
+        sd_multiplier=getattr(args, "denoise_sd_multiplier", 3.0),
         x_anchor_multiplier=getattr(args, "denoise_x_anchor_multiplier", -1.0),
-        signal_q_low=signal_q_low,
-        signal_q_high=signal_q_high,
-        min_cells_per_bin=min_cells_per_bin,
-        min_area=min_area,
-        noise_q=noise_q,
+        signal_q_low=getattr(args, "denoise_signal_q_low", 95.0),
+        signal_q_high=getattr(args, "denoise_signal_q_high", 99.99),
+        min_cells_per_bin=getattr(args, "denoise_min_cells_per_bin", 10),
+        min_area=getattr(args, "denoise_min_area", 15.0),
+        noise_q=getattr(args, "denoise_noise_q", 75.0),
     )
     denoised_df  = result["denoised_df"]
     metadata     = result["metadata"]

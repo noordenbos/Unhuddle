@@ -277,6 +277,43 @@ def parse_arguments() -> argparse.Namespace:
         default=-1.0,
         help="Multiplier for standard deviation to calculate x-anchor in noise cone denoising. anchor_x = mean + multiplier * std. Default: -1.0 (1 std below mean)"
     )
+    # Hidden advanced denoising parameters
+    parser.add_argument(
+        "--denoise_sd_multiplier",
+        type=float,
+        default=3.0,
+        help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--denoise_signal_q_low",
+        type=float,
+        default=95.0,
+        help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--denoise_signal_q_high",
+        type=float,
+        default=99.99,
+        help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--denoise_min_cells_per_bin",
+        type=int,
+        default=10,
+        help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--denoise_min_area",
+        type=float,
+        default=15.0,
+        help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--denoise_noise_q",
+        type=float,
+        default=75.0,
+        help=argparse.SUPPRESS
+    )
     parser.add_argument(
         "--save_reallocation_debug",
         action="store_true",
