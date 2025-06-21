@@ -408,6 +408,15 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
                 logger.info(f"🗑️ Dropping old denoised columns: {den_cols}")
                 prot_df.drop(columns=den_cols, inplace=True)
 
+            # 🚀 Load morphology features to get area information
+            morph_path = os.path.join(dirs["morph"], f"{fov_name}.csv")
+            if os.path.exists(morph_path):
+                morph_df = pd.read_csv(morph_path)
+                logger.debug(f"🔍 Loaded morphology features from {morph_path}")
+            else:
+                logger.warning(f"⚠️ Morphology features not found at {morph_path}")
+                morph_df = None
+
             # 🚀 Append new denoised block
             new_block = group[
                 [c for c in group.columns if c.endswith("_denoised")]
@@ -424,9 +433,9 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
             area_col = "Area"
             memexcl_area_col = "ExclusionMembrane_Area"
             
-            if memexcl_area_col in prot_df.columns:
+            if morph_df is not None and memexcl_area_col in morph_df.columns:
                 # Use exclusion membrane areas for mean intensity calculation
-                memexcl_area_values = prot_df[memexcl_area_col].values
+                memexcl_area_values = morph_df[memexcl_area_col].values
                 valid_memexcl_areas = np.where(memexcl_area_values > 0, memexcl_area_values, 1)
                 
                 logger.debug(f"🔍 Exclusion membrane area values for {fov_name}: min={memexcl_area_values.min()}, max={memexcl_area_values.max()}, mean={memexcl_area_values.mean()}")
@@ -447,12 +456,12 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
                         logger.info(f"✅ Computed {mean_col} from {col} for {fov_name}")
                     else:
                         logger.debug(f"⏭️ Skipping {col} (not a sum intensity column)")
-            elif area_col in prot_df.columns:
+            elif morph_df is not None and area_col in morph_df.columns:
                 # Fallback to cell areas if exclusion membrane areas not available
-                area_values = prot_df[area_col].values
+                area_values = morph_df[area_col].values
                 valid_areas = np.where(area_values > 0, area_values, 1)
                 
-                logger.warning(f"⚠️ ExclusionMembrane_Area not found in {out_path}, using cell areas as fallback")
+                logger.warning(f"⚠️ ExclusionMembrane_Area not found in {morph_path}, using cell areas as fallback")
                 logger.debug(f"🔍 Area values for {fov_name}: min={area_values.min()}, max={area_values.max()}, mean={area_values.mean()}")
                 
                 sum_intensity_cols = [c for c in new_block.columns if c.endswith("_ExclusionMembrane_Sum_Intensity_denoised")]
@@ -471,8 +480,11 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
                     else:
                         logger.debug(f"⏭️ Skipping {col} (not a sum intensity column)")
             else:
-                logger.warning(f"⚠️ Neither Area nor ExclusionMembrane_Area column found in {out_path}, skipping mean intensity computation")
-                logger.debug(f"🔍 Available columns in prot_df: {list(prot_df.columns)}")
+                logger.warning(f"⚠️ Neither Area nor ExclusionMembrane_Area column found in {morph_path}, skipping mean intensity computation")
+                if morph_df is not None:
+                    logger.debug(f"🔍 Available columns in morph_df: {list(morph_df.columns)}")
+                else:
+                    logger.debug(f"🔍 Morphology file not found")
 
             # 🚀 Alignment check
             if len(new_block) != len(prot_df):
