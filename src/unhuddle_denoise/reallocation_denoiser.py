@@ -411,7 +411,7 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
             # 🚀 Append new denoised block
             new_block = group[
                 [c for c in group.columns if c.endswith("_denoised")]
-r            ].reset_index(drop=True)
+            ].reset_index(drop=True)
 
             # 🚀 Compute Mean intensity columns from Sum intensity
             area_col = "Area"
