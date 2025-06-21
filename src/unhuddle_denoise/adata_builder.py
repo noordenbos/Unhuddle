@@ -114,6 +114,24 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
         else:
             logger.debug(f"🟡 No denoised data for FOV: {fov} (no layer stored)")
 
+        # Check if original-style denoised sum exists (alternative compilation method)
+        if paths["denoised_sum"] and paths["denoised_sum"].is_file():
+            # Check if this is the original-style compilation by looking for the method flag
+            # For now, we'll add it as a separate layer if it exists
+            if "sum_unhuddle_denoised_original_style" not in all_layers:
+                all_layers["sum_unhuddle_denoised_original_style"] = []
+            all_layers["sum_unhuddle_denoised_original_style"].append(denoised_sum.values)
+            logger.debug(f"🧪 Alternative: Original-style denoised sum available for FOV: {fov}")
+        
+        # Check for extra original-style CSV files
+        original_style_path = os.path.join(dirs["unhuddle_denoised_sum"], f"{fov}_original_style.csv")
+        if os.path.exists(original_style_path):
+            original_style_df = convert_numeric(load_df(original_style_path, fov))[markers]
+            if "sum_unhuddle_denoised_original_style" not in all_layers:
+                all_layers["sum_unhuddle_denoised_original_style"] = []
+            all_layers["sum_unhuddle_denoised_original_style"].append(original_style_df.values)
+            logger.debug(f"🧪 Extra: Original-style denoised sum loaded for FOV: {fov}")
+
         log_column_stats(X, fov)
 
         all_X.append(X.values)

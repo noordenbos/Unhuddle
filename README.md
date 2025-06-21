@@ -20,7 +20,7 @@ Unhuddle values are normalized by total protein content per cell, but if cell si
 
 The Unhuddle pipeline is built to empower all curious scientists — whether you're a coding pro or just getting started. Our walkthrough makes this process straightforward and accessible. You need to install Python and copy the provided commands to your terminal/shell. See for details:  [Install Python and work with command line interface](#-faq-for-new-users)   
 
-Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, producing a comprehensive AnnData object that packages your cell-level features, masks, spatial coordinates, and marker intensities — all ready for analysis. If you don’t have segmentation masks yet, Unhuddle can optionally generate them using the third-party tool DeepCell-Mesmer, enabling a truly end-to-end experience. Quick preprocessing can be handled within this repository through third party software PENGUIN, streamlining your data preparation before entering the main pipeline.
+Unhuddle runs directly on your multiplexed {marker}.ome.tiff image files, producing a comprehensive AnnData object that packages your cell-level features, masks, spatial coordinates, and marker intensities — all ready for analysis. If you don't have segmentation masks yet, Unhuddle can optionally generate them using the third-party tool DeepCell-Mesmer, enabling a truly end-to-end experience. Quick preprocessing can be handled within this repository through third party software PENGUIN, streamlining your data preparation before entering the main pipeline.
 
 Once preprocessed, Unhuddle seamlessly integrates morphometrics, reallocation models, functional normalization, and quality control in one modular framework. The resulting AnnData object is extendable with custom metadata or omics layers and remains fully compatible with Scanpy and SpaceCat workflows. Example Jupyter notebooks are provided to guide you through downstream analyses and visualizations, making it easy to explore your data.
 
@@ -425,7 +425,7 @@ QC/
 │   ├── segmentation/         # Overlay filtering QC on segmentation masks
 │   │   └── <FOV>.png             
 │   │
-│   ├── storyboards/          # Combined “storyboard” images
+│   ├── storyboards/          # Combined "storyboard" images
 │   │   ├── density_storyboard.png
 │   │   │                     # All density_maps in a single grid
 │   │   └── segmentation_storyboard.png # All segmentation overlays stacked
@@ -577,62 +577,26 @@ For each FOV (field of view) folder, the following stages are run:
 - Nuclear markers are excluded from this step.
 - Output saved to `/protein_features/{fov}.csv`.
 
----
-
-## 🧽 Denoising (Experimental)  
-
-
-## Cohort-Level Signal/Noise Decomposition
-
-If `--use_denoised` is enabled, you can choose between two denoising methods by specifying the `--denoise_method` flag:
-
-### 1️⃣ Percentile-Based Denoising
-- Use this method if you want to filter signal by **percentiles** based on cell **size** (area or perimeter) and **intensity**.
-- Activate with: `--denoise_method percentile`
-- Adjust the percentile threshold with: `--percentile <value>` (valid range: 1-99)
-- This method performs a percentile cutoff to reduce background noise, especially useful for markers with a clear distribution spread.
-
-**Visualization Example:**
-
-![Percentile-Based Denoising](assets/images/example_denoise_percentile.png)
-
-
-### 2️⃣ Reallocation-Based Denoising
-- Use this method to correct for noise accumulation in larger cells based on **regression fitting**.
-- Activate with: `--denoise_method noisecone`
-- This method fits a linear model to capture the relationship between cell size and noise, and reallocates signal accordingly.
-
-**Visualization Example:**
-
-![Reallocation-Based Denoising](assets/images/example_denoise_fit.png)
-
-
-### 🖼️ **Denoiser Visualization Module**
-Both methods produce the following QC outputs per marker:
-
-- **Raw Scatter Plot:** Shows original signal distribution.
-- **Lowess Smoothing Curves:** Smoothed signal intensity curves.
-- **Residuals after Denoising:** Highlights what was removed as noise.
-
-All outputs are saved to the directory specified in `QC_metadata_denoised`.
-
-
-### ⚠️ **Limitations**
-- For cohorts with fewer than 100,000 cells, denoising is less reliable and will be skipped unless you explicitly opt in.
-
-
----
-
-## 🔁 Reallocation and Rescaling
-
-### 5. **Object-Intensity Reallocation**
+### 4. **Reallocation and Rescaling**
 - Merge morphological and protein features with the interaction dictionary.
 - Redistribute per-pixel intensities across interacting objects using weighted contributions.
-- Output:
-  - `/unhuddle_sum/{fov}.csv`
-  - `/unhuddle_denoised_sum/{fov}.csv` #extra in denoised mode
 
-### 6. **Normalization**
+#### **Canonical Branch (Default)**
+- **Intensity Source**: `{}_ExclusionMembrane_Mean_Intensity` columns
+- **Reallocation Weights**: Based on original mean intensities
+- **Sum Compilation**: `original_sum + reallocated_intensity - taken_intensity`
+- Output: `/unhuddle_sum/{fov}.csv`
+
+#### **Denoised Branch (Experimental)**
+- **Intensity Source**: `{}_ExclusionMembrane_Mean_Intensity_denoised` columns
+- **Reallocation Weights**: Based on denoised mean intensities (consistent with canonical branch)
+- **Standard Sum Compilation**: `denoised_residuals + reallocated_intensity + solo_border_pixels`
+- **Optional Alternative Compilation**: Use `--add_original_compiled_sum` to also generate `original_sum + reallocated_intensity - taken_intensity` (like canonical branch)
+- Output: 
+  - `/unhuddle_denoised_sum/{fov}.csv` (standard method)
+  - `/unhuddle_denoised_sum_original_style/{fov}.csv` (if `--add_original_compiled_sum` is used)
+
+### 5. **Normalization**
 - Apply normalization using total protein expression per cell (allow only phenotype_markers to contribute):
   - Sum phenotype marker expression after unhuddle per cell
   - Normalize per pixel surface 'Area'
@@ -672,7 +636,7 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 
 ## 📦 Optional Modules
 
-### 7. **DeepCell Mask Creation** (third party software)
+### 6. **DeepCell Mask Creation** (third party software)
 - If `--create_deepcell_mask` is enabled:
   - RGB overlays are constructed from marker images to highlight relevant structures for segmentation.
   - By default, the overlay uses the markers specified in `--normalization_markers` and `--nuclear_markers`.
@@ -685,13 +649,13 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 ---
 
 
-### 8. **AnnData Object Creation**
+### 7. **AnnData Object Creation**
 - If `--create_adata` is used:
   - All per-FOV features, masks, and normalized intensities are assembled into a single `.h5ad` file
   - Includes QC flags, overlays, and spatial information
   - Compatible with `scanpy`, `napari`, and `SpaceCat` pipelines
 
-### 9. **Automated Filtering & Embedding QC**
+### 8. **Automated Filtering & Embedding QC**
 - Performed automatically on the assembled AnnData object
 - Includes:
   - Low-intensity filtering (`QC_low_intensity_filter`)
@@ -741,7 +705,7 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 |---------------------------|-------------|
 | `--geckodriver_path`       | Path to geckodriver for Selenium. **Required when** `--create_deepcell_mask` is used. |
 | `--deepcell_url`           | URL of the DeepCell website to connect to (default: `http://www.deepcell.org`). |
-| `--deepcell_resolution`    | Objective magnification used for DeepCell overlay creation. Must be one of:<br><br>• `10` → 10x (1 μm/pixel)<br>• `20` → 20x (0.5 μm/pixel)<br>• `40` → 40x (0.25 μm/pixel)<br>• `60` → 60x (0.1667 μm/pixel)<br>• `100` → 100x (0.1 μm/pixel)<br><br>**Required when** `--create_deepcell_mask` is used. |
+| `--deepcell_resolution`    | Objective magnification used for DeepCell overlay creation. Must be one of:<br><br>• `10` → 10x (1 μm/pixel)<br>• `20` → 20x (0.5 μm/pixel)<br>• `40` → 40x (0.25 μm/pixel)<br>• `60` → 60x (0.1667 μm/pixel)<br>• `100` → 100x (0.1 μm/pixel)<br><br>**Required when** `--create_deepcell_mask` is used. |
 
 ### 🎨 RGB overlay creation
 | Argument                   | Description |
@@ -757,6 +721,7 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 | Argument              | Description                                                                                     |
 |-----------------------|-------------------------------------------------------------------------------------------------|
 | `--use_denoised`      | Enables **cohort-level denoising** of marker intensities using signal vs. noise cone modeling. |
+| `--add_original_compiled_sum` | Add extra denoised sum data using original-style compilation (original_sum + reallocated - taken) in addition to the standard solo-border method. This creates an additional layer in the AnnData object. |
 | `--normalization_markers` | Required. Markers used for per-cell normalization (e.g., CD45, Vimentin).                 |
 | `--nuclear_markers`   | Required. Markers used for nucleus detection and morphology extraction.                        |
 
@@ -843,6 +808,8 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 |-------------------|-----------------------------------------------------------|
 | `sum_unhuddle`    | Corrected per-cell intensities before normalization       |
 | `sum_original`    | Raw intensities prior to interaction reallocation         |
+| `sum_unhuddle_denoised` | Denoised per-cell intensities (if `--use_denoised` is used) |
+| `sum_unhuddle_denoised_original_style` | Alternative denoised compilation method (if `--add_original_compiled_sum` is used) |
 
 ---
 
@@ -887,7 +854,7 @@ layers: 'ExclMem_Sum', 'sum_original', 'sum_unhuddle', 'sum_unhuddle_denoised'
 # cell_id = X.index → {fov}_{Label}
 # fov → {patient_id}_{FOVnumber}
 # Label → Integer ID from segmentation masks
-# NB obs contain "fov" and “patient_id” for keying
+# NB obs contain "fov" and "patient_id" for keying
 
 # Example to access a segmentation mask for a specific FOV:
 segmentation_mask = adata.uns['spatial'][fov]['segmentation']
@@ -933,7 +900,7 @@ Requires Python 3.8 or higher
 
 ➡️ The Command Line Interface (CLI) is a text-based way to interact with your computer. Instead of clicking buttons, you type commands to execute programs and scripts.  
 
-✅ The CLI is ideal for automation, reproducibility, and handling large datasets — it’s like giving your computer direct instructions, making processes faster and more efficient.  
+✅ The CLI is ideal for automation, reproducibility, and handling large datasets — it's like giving your computer direct instructions, making processes faster and more efficient.  
 
 💡 To open the CLI on your system:  
 - **Windows**: Use **Git Bash** (installed with Git), or search for **Command Prompt** or **PowerShell** in the Start menu.  
@@ -946,11 +913,11 @@ Requires Python 3.8 or higher
 
 ---
 
-<details><summary><h3>Q2. I don’t have Python installed. What should I do?</h3></summary>
+<details><summary><h3>Q2. I don't have Python installed. What should I do?</h3></summary>
 
 
 ➡️ **Windows:** Download from [python.org/downloads/windows](https://www.python.org/downloads/windows/)  
-✅ During installation, **check the box “Add Python to PATH.”**
+✅ During installation, **check the box "Add Python to PATH."**
 
 ➡️ **macOS:** Python 3 is often pre-installed, but it's recommended to install via [Homebrew](https://brew.sh/):  
 ```bash
@@ -973,7 +940,7 @@ sudo dnf install python3
 
 ---
 
-<details><summary><h3>Q3. I don’t have Git installed. Where can I get it?</h3></summary>
+<details><summary><h3>Q3. I don't have Git installed. Where can I get it?</h3></summary>
 
 
 ➡️ **Windows:** Install from [git-scm.com/download/win](https://git-scm.com/download/win)  
@@ -1023,7 +990,7 @@ We currently provide a command-line interface (CLI) because it's the most flexib
 
 🧠 Curious or cautious? You can always paste any command into your favorite AI assistant or chatbot (like ChatGPT, Copilot, etc.) and ask:
 
-“Can you explain what this command does?”
+"Can you explain what this command does?"
 
 That way, you're always in control — and learning while using the tools safely.
 
@@ -1045,7 +1012,7 @@ Credits: Sequeira, A. M., Ijsselsteijn, M. E., Rocha, M., & de Miranda, N. F. (2
         cd unhuddle_denoise
         ```
     - or via ssh:
-        ```powershell
+        ```bash
         git clone git@github.com:tbee05/unhuddle_denoise.git
         cd unhuddle_denoise
         ```

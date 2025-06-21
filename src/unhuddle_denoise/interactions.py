@@ -313,7 +313,7 @@ def compute_reallocation_original(interactions, protein_features, tol=1e-6):
 
 def compute_reallocation_denoised(interactions, protein_features, tol=1e-6):
     """
-    Compute reallocation using ONLY denoised intensities.
+    Compute reallocation using ONLY denoised mean intensities.
     This is used for the experimental denoised branch only.
     """
     import logging
@@ -321,14 +321,14 @@ def compute_reallocation_denoised(interactions, protein_features, tol=1e-6):
     from collections import defaultdict
 
     logger = logging.getLogger(__name__)
-    logger.debug("🧪 compute_reallocation_denoised: Using denoised intensities only")
+    logger.debug("🧪 compute_reallocation_denoised: Using denoised mean intensities only")
 
     denoised_intensity = {}
 
     for _, row in protein_features.iterrows():
         for col in row.index:
-            if col.endswith("_ExclusionMembrane_Sum_Intensity_denoised"):
-                marker = col.replace("_ExclusionMembrane_Sum_Intensity_denoised", "")
+            if col.endswith("_ExclusionMembrane_Mean_Intensity_denoised"):
+                marker = col.replace("_ExclusionMembrane_Mean_Intensity_denoised", "")
                 denoised_intensity[(row["Label"], marker)] = row[col]
 
     def get_marker_intensity(label, marker):
@@ -336,10 +336,10 @@ def compute_reallocation_denoised(interactions, protein_features, tol=1e-6):
         try:
             out = max(float(val), 0.0)
             if out == 0.0 and (val is None or (isinstance(val, float) and np.isnan(val))):
-                logger.debug(f"⚠️ Denoised intensity missing or NaN for {label}, {marker}")
+                logger.debug(f"⚠️ Denoised mean intensity missing or NaN for {label}, {marker}")
             return out
         except Exception as e:
-            logger.warning(f"⚠️ Invalid denoised intensity for {label}, {marker}: {val} ({e})")
+            logger.warning(f"⚠️ Invalid denoised mean intensity for {label}, {marker}: {val} ({e})")
             return 0.0
 
     reallocation = defaultdict(lambda: {
@@ -514,6 +514,47 @@ def settle_debts_from_residuals(
 
 
     return corrected_df
+
+
+def settle_debts_from_residuals_original_style(
+    fov_folder,
+    reallocation,
+    protein_features,
+    dirs
+):
+    """
+    Alternative sum compilation method for denoised branch that follows the same pattern as canonical branch:
+    sum_unhuddle_denoised = original_sum + reallocated_intensity - taken_intensity
+    """
+    logger = logging.getLogger(__name__)
+    fov_name = os.path.basename(fov_folder)
+    if not isinstance(protein_features.index, pd.MultiIndex):
+        protein_features = protein_features.set_index(["FOV", "Label"])
+
+    # Use original Cell_Sum_Intensity columns as base
+    sum_cols = [c for c in protein_features.columns if c.endswith("_Cell_Sum_Intensity")]
+    markers = [c.replace("_Cell_Sum_Intensity", "") for c in sum_cols]
+
+    # Create a copy for the denoised sum calculation
+    denoised_sum_df = protein_features.reset_index()[["Label"] + sum_cols].copy()
+    denoised_sum_df.columns = ["Label"] + markers
+
+    # Apply reallocation: original_sum + reallocated - taken
+    for label, d in reallocation.items():
+        key = (fov_name, label)
+        for m in markers:
+            col = f"{m}_Cell_Sum_Intensity"
+            if col in protein_features.columns:
+                original_val = protein_features.at[key, col]
+                reallocated_val = d["reallocated_intensity"].get(m, 0)
+                taken_val = d["taken_intensity"].get(m, 0)
+                denoised_sum_df.loc[denoised_sum_df["Label"] == label, m] = original_val + reallocated_val - taken_val
+
+    # Save to denoised sum directory
+    denoised_sum_df.to_csv(os.path.join(dirs["unhuddle_denoised_sum"], f"{fov_name}.csv"), index=False)
+    logger.info(f"📝 Saved original-style denoised sum to {fov_name}.csv")
+
+    return denoised_sum_df
 
 
 def save_reallocation_debug_data(

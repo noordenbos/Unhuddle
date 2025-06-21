@@ -413,6 +413,21 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
                 [c for c in group.columns if c.endswith("_denoised")]
             ].reset_index(drop=True)
 
+            # 🚀 Compute Mean intensity columns from Sum intensity
+            area_col = "Area"
+            if area_col in prot_df.columns:
+                area_values = prot_df[area_col].values
+                valid_areas = np.where(area_values > 0, area_values, 1)
+                
+                for col in new_block.columns:
+                    if col.endswith("_ExclusionMembrane_Sum_Intensity_denoised"):
+                        marker = col.replace("_ExclusionMembrane_Sum_Intensity_denoised", "")
+                        sum_values = new_block[col].values
+                        mean_col = f"{marker}_ExclusionMembrane_Mean_Intensity_denoised"
+                        mean_values = sum_values / valid_areas
+                        new_block[mean_col] = mean_values
+                        logger.debug(f"✅ Computed {mean_col} from {col}")
+
             # 🚀 Alignment check
             if len(new_block) != len(prot_df):
                 logger.warning(f"⚠️ Row count mismatch for {fov_name}: "

@@ -16,6 +16,7 @@ from unhuddle_denoise.interactions import (
     compute_reallocation_denoised,
     settle_debts_intensity,
     settle_debts_from_residuals,
+    settle_debts_from_residuals_original_style,
     save_reallocation_debug_data,
     compute_solo_border_pixels
 )
@@ -130,7 +131,8 @@ def process_fov_reallocation_only(
     markers_for_normalization,
     use_denoised,
     log_level,
-    save_reallocation_debug=False
+    save_reallocation_debug=False,
+    add_original_compiled_sum=False
 ):
     from unhuddle_denoise.cli_helpers import setup_logging
     setup_logging(log_level)
@@ -186,6 +188,8 @@ def process_fov_reallocation_only(
                     all_interactions, protein_features, tol=1e-6
                 )
                 
+                # Always run solo-border method (standard)
+                logger.info(f"🔁 Running standard solo-border method for denoised sum compilation")
                 # Get solo border pixel data
                 markers = [c.replace("_ExclusionMembrane_Sum_Intensity_denoised", "") for c in denoised_cols]
                 solo_border_intensity = compute_solo_border_pixels(cell_mask, membrane_mask, fov_path, markers)
@@ -199,6 +203,22 @@ def process_fov_reallocation_only(
                     sensor_markers=markers_for_normalization,
                     dirs=dirs
                 )
+                
+                # Optionally add original-style compilation as extra data
+                if add_original_compiled_sum:
+                    logger.info(f"🔁 Adding extra original-style denoised sum compilation")
+                    original_style_df = settle_debts_from_residuals_original_style(
+                        fov_folder=fov_path,
+                        reallocation=reallocation_denoised,
+                        protein_features=protein_features,
+                        dirs=dirs
+                    )
+                    # Save with a different filename to distinguish it
+                    fov_name = os.path.basename(fov_path)
+                    original_style_path = os.path.join(dirs["unhuddle_denoised_sum"], f"{fov_name}_original_style.csv")
+                    original_style_df.to_csv(original_style_path, index=False)
+                    logger.info(f"📝 Saved extra original-style denoised sum to {original_style_path}")
+                
                 result["intensity_settled_denoised"] = True
         else:
             logger.info(f"ℹ️ Skipping denoised reallocation for {fov_path} — flag or output dirs not set.")

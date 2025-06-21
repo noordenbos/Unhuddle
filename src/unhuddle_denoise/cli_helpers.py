@@ -319,6 +319,11 @@ def parse_arguments() -> argparse.Namespace:
         action="store_true",
         help="Save reallocation dictionaries and solo border pixel data to JSON files for debugging and validation"
     )
+    parser.add_argument(
+        "--add_original_compiled_sum",
+        action="store_true",
+        help="Add extra denoised sum data using original-style compilation (original_sum + reallocated - taken) in addition to the standard solo-border method. This creates an additional layer in the AnnData object."
+    )
 
     return parser.parse_args()
 
@@ -593,6 +598,7 @@ def build_reallocation_args(fov: str, dirs: dict, args: argparse.Namespace):
         args.use_denoised,
         args.log_level,
         args.save_reallocation_debug,
+        getattr(args, "add_original_compiled_sum", False),
     )
 
 
