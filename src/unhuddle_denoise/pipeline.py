@@ -92,19 +92,19 @@ def process_fov_features_only(
             result["nuclear_mask_created"] = False
 
         try:
-            morph_features = extract_morphology_features(fov_path, cell_mask, files, nuclear_markers, nuclear_mask, dirs=dirs)
-            result["morphology_extracted"] = True
-        except Exception as e:
-            logger.error(f"❌ Morphology feature extraction failed: {e}")
-            result["feature_extraction_error"] = f"Morphology: {e}"
-            return result
-
-        try:
             membrane_mask, memexcl_mask = process_membrane_masks(fov_path, cell_mask)
             result["membrane_masks_generated"] = True
         except Exception as e:
             logger.error(f"❌ Membrane mask processing failed: {e}")
             result["feature_extraction_error"] = f"Membrane masks: {e}"
+            return result
+
+        try:
+            morph_features = extract_morphology_features(fov_path, cell_mask, files, nuclear_markers, nuclear_mask, memexcl_mask, dirs=dirs)
+            result["morphology_extracted"] = True
+        except Exception as e:
+            logger.error(f"❌ Morphology feature extraction failed: {e}")
+            result["feature_extraction_error"] = f"Morphology: {e}"
             return result
 
         try:

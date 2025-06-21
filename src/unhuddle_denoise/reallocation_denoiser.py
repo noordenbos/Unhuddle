@@ -413,11 +413,51 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
                 [c for c in group.columns if c.endswith("_denoised")]
             ].reset_index(drop=True)
 
+            logger.debug(f"🔍 Denoised columns for {fov_name}: {list(new_block.columns)}")
+            logger.debug(f"🔍 New block shape for {fov_name}: {new_block.shape}")
+            logger.debug(f"🔍 Group shape for {fov_name}: {group.shape}")
+            logger.debug(f"🔍 Prot_df shape for {fov_name}: {prot_df.shape}")
+            
+            logger.info(f"🔍 Processing {fov_name}: {len(new_block.columns)} denoised columns, {new_block.shape[0]} rows")
+
             # 🚀 Compute Mean intensity columns from Sum intensity
             area_col = "Area"
-            if area_col in prot_df.columns:
+            memexcl_area_col = "ExclusionMembrane_Area"
+            
+            if memexcl_area_col in prot_df.columns:
+                # Use exclusion membrane areas for mean intensity calculation
+                memexcl_area_values = prot_df[memexcl_area_col].values
+                valid_memexcl_areas = np.where(memexcl_area_values > 0, memexcl_area_values, 1)
+                
+                logger.debug(f"🔍 Exclusion membrane area values for {fov_name}: min={memexcl_area_values.min()}, max={memexcl_area_values.max()}, mean={memexcl_area_values.mean()}")
+                logger.debug(f"🔍 Valid exclusion membrane areas for {fov_name}: min={valid_memexcl_areas.min()}, max={valid_memexcl_areas.max()}, mean={valid_memexcl_areas.mean()}")
+                
+                sum_intensity_cols = [c for c in new_block.columns if c.endswith("_ExclusionMembrane_Sum_Intensity_denoised")]
+                logger.debug(f"🔍 Found {len(sum_intensity_cols)} sum intensity columns: {sum_intensity_cols}")
+                logger.info(f"🔍 Found {len(sum_intensity_cols)} sum intensity columns for mean computation in {fov_name}")
+                
+                for col in new_block.columns:
+                    if col.endswith("_ExclusionMembrane_Sum_Intensity_denoised"):
+                        marker = col.replace("_ExclusionMembrane_Sum_Intensity_denoised", "")
+                        sum_values = new_block[col].values
+                        mean_col = f"{marker}_ExclusionMembrane_Mean_Intensity_denoised"
+                        mean_values = sum_values / valid_memexcl_areas
+                        new_block[mean_col] = mean_values
+                        logger.debug(f"✅ Computed {mean_col} from {col}: sum_min={sum_values.min()}, sum_max={sum_values.max()}, mean_min={mean_values.min()}, mean_max={mean_values.max()}")
+                        logger.info(f"✅ Computed {mean_col} from {col} for {fov_name}")
+                    else:
+                        logger.debug(f"⏭️ Skipping {col} (not a sum intensity column)")
+            elif area_col in prot_df.columns:
+                # Fallback to cell areas if exclusion membrane areas not available
                 area_values = prot_df[area_col].values
                 valid_areas = np.where(area_values > 0, area_values, 1)
+                
+                logger.warning(f"⚠️ ExclusionMembrane_Area not found in {out_path}, using cell areas as fallback")
+                logger.debug(f"🔍 Area values for {fov_name}: min={area_values.min()}, max={area_values.max()}, mean={area_values.mean()}")
+                
+                sum_intensity_cols = [c for c in new_block.columns if c.endswith("_ExclusionMembrane_Sum_Intensity_denoised")]
+                logger.debug(f"🔍 Found {len(sum_intensity_cols)} sum intensity columns: {sum_intensity_cols}")
+                logger.info(f"🔍 Found {len(sum_intensity_cols)} sum intensity columns for mean computation in {fov_name}")
                 
                 for col in new_block.columns:
                     if col.endswith("_ExclusionMembrane_Sum_Intensity_denoised"):
@@ -426,7 +466,13 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
                         mean_col = f"{marker}_ExclusionMembrane_Mean_Intensity_denoised"
                         mean_values = sum_values / valid_areas
                         new_block[mean_col] = mean_values
-                        logger.debug(f"✅ Computed {mean_col} from {col}")
+                        logger.debug(f"✅ Computed {mean_col} from {col}: sum_min={sum_values.min()}, sum_max={sum_values.max()}, mean_min={mean_values.min()}, mean_max={mean_values.max()}")
+                        logger.info(f"✅ Computed {mean_col} from {col} for {fov_name}")
+                    else:
+                        logger.debug(f"⏭️ Skipping {col} (not a sum intensity column)")
+            else:
+                logger.warning(f"⚠️ Neither Area nor ExclusionMembrane_Area column found in {out_path}, skipping mean intensity computation")
+                logger.debug(f"🔍 Available columns in prot_df: {list(prot_df.columns)}")
 
             # 🚀 Alignment check
             if len(new_block) != len(prot_df):

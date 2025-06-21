@@ -14,7 +14,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-def extract_morphology_features(fov_folder, cell_mask, files, nuclear_markers, nuclear_mask=None, dirs=None):
+def extract_morphology_features(fov_folder, cell_mask, files, nuclear_markers, nuclear_mask=None, memexcl_mask=None, dirs=None):
     """
     Extract features from a FOV. If cell_mask and/or nuclear_mask are provided,
     they will be used; otherwise, the function will load them from disk.
@@ -71,6 +71,13 @@ def extract_morphology_features(fov_folder, cell_mask, files, nuclear_markers, n
             euler_number = region.euler_number
             centroid_row, centroid_col = region.centroid
 
+            # Calculate exclusion membrane area for this cell
+            if memexcl_mask is not None:
+                memexcl_region = (memexcl_mask == label)
+                memexcl_area = np.sum(memexcl_region)
+            else:
+                memexcl_area = np.nan
+
             # Default NaNs
             nucleus_area = nucleus_eccentricity = nc_area_ratio = np.nan
             nucleus_centroid_row = nucleus_centroid_col = centroid_deviation = np.nan
@@ -123,6 +130,7 @@ def extract_morphology_features(fov_folder, cell_mask, files, nuclear_markers, n
                 'Nucleus_Centroid_Row': nucleus_centroid_row,
                 'Nucleus_Centroid_Col': nucleus_centroid_col,
                 'Centroid_Deviation': centroid_deviation,
+                'ExclusionMembrane_Area': memexcl_area,
             }
 
             for marker in nuclear_markers:
@@ -154,6 +162,14 @@ def extract_protein_intensity(fov_folder, morph_features, cell_mask, membrane_ma
 
         labels = morph_features["Label"].values
         areas = morph_features["Area"].values
+        
+        # Get exclusion membrane areas if available
+        if "ExclusionMembrane_Area" in morph_features.columns:
+            memexcl_areas = morph_features["ExclusionMembrane_Area"].values
+            logger.debug(f"Using exclusion membrane areas for mean intensity calculation")
+        else:
+            memexcl_areas = areas  # fallback to cell areas
+            logger.warning(f"ExclusionMembrane_Area not found, using cell areas as fallback")
 
         unique_labels = np.unique(cell_mask)
         unique_labels = unique_labels[unique_labels != 0]
@@ -184,9 +200,10 @@ def extract_protein_intensity(fov_folder, morph_features, cell_mask, membrane_ma
 
             memexcl_sum = np.where((memexcl_sum == 0) & (areas > 0), cell_sum, memexcl_sum)
             valid_areas = np.where(areas > 0, areas, 1)
+            valid_memexcl_areas = np.where(memexcl_areas > 0, memexcl_areas, 1)
             cell_mean = cell_sum / valid_areas
             mem_mean = mem_sum / valid_areas
-            memexcl_mean = memexcl_sum / valid_areas
+            memexcl_mean = memexcl_sum / valid_memexcl_areas
 
             results[f"{marker_name}_Cell_Mean_Intensity"] = cell_mean.tolist()
             results[f"{marker_name}_Cell_Sum_Intensity"] = cell_sum.tolist()
