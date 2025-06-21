@@ -607,6 +607,8 @@ For each FOV (field of view) folder, the following stages are run:
 - Output:
   - `/unhuddle_normalized/{fov}.csv`
   - `/original_normalized/{fov}.csv`
+  - `/unhuddle_denoised_normalized/{fov}.csv` (if `--use_denoised` is active)
+  - `/unhuddle_denoised_normalized_original_style/{fov}.csv` (if both `--use_denoised` and `--add_original_compiled_sum` are active)
 
 ![Reallocation-Based Denoising](assets/images/example_normalization.png)  
 
@@ -810,6 +812,8 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 | `sum_original`    | Raw intensities prior to interaction reallocation         |
 | `sum_unhuddle_denoised` | Denoised per-cell intensities (if `--use_denoised` is used) |
 | `sum_unhuddle_denoised_original_style` | Alternative denoised compilation method (if `--add_original_compiled_sum` is used) |
+| `unhuddle_denoised` | Normalized denoised intensities (if `--use_denoised` is used) |
+| `unhuddle_denoised_original_style` | Normalized original-style denoised intensities (if both `--use_denoised` and `--add_original_compiled_sum` are used) |
 
 ---
 

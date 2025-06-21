@@ -157,13 +157,21 @@ def main():
     logger.debug(f"🧬 Markers selected for normalization: {protein_features}")
     logger.debug(f"🧪 Sensor markers: {args.normalization_markers}")
 
+    # Build sum_dirs dictionary, filtering out None values
+    sum_dirs = {
+        'original': dirs['original_sum'],
+        'unhuddle': dirs['unhuddle_sum'],
+    }
+    
+    # Add denoised directories if they exist
+    if dirs.get('unhuddle_denoised_sum'):
+        sum_dirs['denoised'] = dirs['unhuddle_denoised_sum']
+    if dirs.get('unhuddle_denoised_sum_original_style'):
+        sum_dirs['denoised_original_style'] = dirs['unhuddle_denoised_sum_original_style']
+
     run_cohort_normalization_adaptive(
         fov_folders=fov_folders,
-        sum_dirs={
-            'original': dirs['original_sum'],
-            'unhuddle': dirs['unhuddle_sum'],
-            'denoised': dirs.get('unhuddle_denoised_sum')
-        },
+        sum_dirs=sum_dirs,
         dirs=dirs,
         markers=protein_features,
         sensor_markers=args.normalization_markers,

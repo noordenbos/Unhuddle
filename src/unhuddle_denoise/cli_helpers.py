@@ -457,6 +457,11 @@ def setup_output_directories(output_base: str, args) -> dict:
         dirs["unhuddle_denoised_sum"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum")
         dirs["unhuddle_denoised_norm"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized")
         dirs["QC_metadata_denoised"] = os.path.join(output_base, "QC", "denoiser")
+        
+        # Add directory for original-style compilation if the flag is used
+        if getattr(args, "add_original_compiled_sum", False):
+            dirs["unhuddle_denoised_sum_original_style"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum_original_style")
+            dirs["unhuddle_denoised_norm_original_style"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized_original_style")
 
     if getattr(args, "save_reallocation_debug", False):
         dirs["QC_reallocation"] = os.path.join(dirs["QC"], "reallocation")
@@ -800,6 +805,7 @@ def run_cohort_normalization_adaptive(
         "original": dirs.get("original_norm"),
         "unhuddle": dirs.get("unhuddle_norm"),
         "denoised": dirs.get("unhuddle_denoised_norm"),
+        "denoised_original_style": dirs.get("unhuddle_denoised_norm_original_style"),
     }
 
     # Process each branch

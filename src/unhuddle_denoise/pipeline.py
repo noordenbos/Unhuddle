@@ -213,9 +213,9 @@ def process_fov_reallocation_only(
                         protein_features=protein_features,
                         dirs=dirs
                     )
-                    # Save with a different filename to distinguish it
+                    # Save to the separate directory for original-style compilation
                     fov_name = os.path.basename(fov_path)
-                    original_style_path = os.path.join(dirs["unhuddle_denoised_sum"], f"{fov_name}_original_style.csv")
+                    original_style_path = os.path.join(dirs["unhuddle_denoised_sum_original_style"], f"{fov_name}.csv")
                     original_style_df.to_csv(original_style_path, index=False)
                     logger.info(f"📝 Saved extra original-style denoised sum to {original_style_path}")
                 
