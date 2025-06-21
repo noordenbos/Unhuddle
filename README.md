@@ -590,10 +590,18 @@ For each FOV (field of view) folder, the following stages are run:
 #### **Denoised Branch (Experimental)**
 - **Intensity Source**: `{}_ExclusionMembrane_Mean_Intensity_denoised` columns
 - **Reallocation Weights**: Based on denoised mean intensities (consistent with canonical branch)
-- **Standard Sum Compilation**: `denoised_residuals + reallocated_intensity + solo_border_pixels`
-- **Optional Alternative Compilation**: Use `--add_original_compiled_sum` to also generate `original_sum + reallocated_intensity - taken_intensity` (like canonical branch)
+- **Standard Sum Compilation (Solo Border)**: `denoised_residuals + reallocated_intensity + solo_border_pixels`
+  - Starts from denoised exclusion membrane residuals
+  - Adds reallocated intensity from border interactions
+  - Adds solo border pixel intensities
+  - **Result**: Lower values since it only includes denoised exclusion membrane + border pixels
+- **Optional Alternative Compilation (Original Style)**: Use `--add_original_compiled_sum` to also generate `original_cell_sum + reallocated_intensity - taken_intensity`
+  - Starts from original whole cell sums
+  - Applies denoised reallocation (same as canonical branch pattern)
+  - **Result**: Higher values since it includes the full original cell intensity that was denoised in the exclusion membrane
+  - **Expected**: Should be higher than solo border method due to inclusion of original cell core intensities
 - Output: 
-  - `/unhuddle_denoised_sum/{fov}.csv` (standard method)
+  - `/unhuddle_denoised_sum/{fov}.csv` (standard solo border method)
   - `/unhuddle_denoised_sum_original_style/{fov}.csv` (if `--add_original_compiled_sum` is used)
 
 ### 5. **Normalization**
@@ -810,8 +818,8 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 |-------------------|-----------------------------------------------------------|
 | `sum_unhuddle`    | Corrected per-cell intensities before normalization       |
 | `sum_original`    | Raw intensities prior to interaction reallocation         |
-| `sum_unhuddle_denoised` | Denoised per-cell intensities (if `--use_denoised` is used) |
-| `sum_unhuddle_denoised_original_style` | Alternative denoised compilation method (if `--add_original_compiled_sum` is used) |
+| `sum_unhuddle_denoised` | Denoised per-cell intensities using solo border method (if `--use_denoised` is used) |
+| `sum_unhuddle_denoised_original_style` | Alternative denoised compilation using original cell sums + reallocation (if `--add_original_compiled_sum` is used) |
 | `unhuddle_denoised` | Normalized denoised intensities (if `--use_denoised` is used) |
 | `unhuddle_denoised_original_style` | Normalized original-style denoised intensities (if both `--use_denoised` and `--add_original_compiled_sum` are used) |
 
