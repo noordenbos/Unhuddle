@@ -174,7 +174,7 @@ def process_fov_reallocation_only(
         reallocation_denoised = None
         solo_border_intensity = None
         
-        if use_denoised and "unhuddle_denoised_sum" in dirs and "unhuddle_denoised_norm" in dirs:
+        if use_denoised and "unhuddle_denoised_sum" in dirs and "normalized_unhuddle_denoised" in dirs:
             logger.info(f"🔁 Running experimental denoised reallocation for FOV: {fov_path}")
             
             # Check if denoised data is available

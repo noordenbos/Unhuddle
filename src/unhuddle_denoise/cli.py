@@ -142,7 +142,7 @@ def main():
     successful = [os.path.basename(fov) for fov, res in results_stage2.items() if not result_failed(res)]
     if successful:
         print("📁 Processed FOV folders have updated masks and overlays — check the pseudocolored mask renders for validation.")
-        print(f"📄 Unhuddle normalized output (partial): {dirs['unhuddle_norm']}")
+        print(f"📄 Unhuddle normalized output (partial): {dirs['normalized_unhuddle']}")
         print(f"📄 Cell-level morphology metrics: {dirs['morph']}")
         print(f"📄 Raw/pre-normalization values: {args.output_base_path}\n")
 

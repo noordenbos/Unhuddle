@@ -439,9 +439,9 @@ def setup_output_directories(output_base: str, args) -> dict:
         "protein": os.path.join(output_base, "features", "protein_features"),
         "original_tables": os.path.join(output_base, "processed_data", "original_tables"),
         "original_sum": os.path.join(output_base, "processed_data", "original_tables", "original_sum"),
-        "original_norm": os.path.join(output_base, "processed_data", "original_tables", "original_normalized"),
+        "normalized_original": os.path.join(output_base, "processed_data", "original_tables", "original_normalized"),
         "unhuddle_sum": os.path.join(output_base, "processed_data", "unhuddle_sum"),
-        "unhuddle_norm": os.path.join(output_base, "processed_data", "unhuddle_normalized"),
+        "normalized_unhuddle": os.path.join(output_base, "processed_data", "unhuddle_normalized"),
         "QC": os.path.join(output_base, "QC"),
         "QC_normstats": os.path.join(output_base, "QC", "normalization","norm_stats"),
     }
@@ -455,13 +455,13 @@ def setup_output_directories(output_base: str, args) -> dict:
 
     if getattr(args, "use_denoised", False):
         dirs["unhuddle_denoised_sum"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum")
-        dirs["unhuddle_denoised_norm"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized")
+        dirs["normalized_unhuddle_denoised"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized")
         dirs["QC_metadata_denoised"] = os.path.join(output_base, "QC", "denoiser")
         
         # Add directory for original-style compilation if the flag is used
         if getattr(args, "add_original_compiled_sum", False):
             dirs["unhuddle_denoised_sum_original_style"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum_original_style")
-            dirs["unhuddle_denoised_norm_original_style"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized_original_style")
+            dirs["normalized_unhuddle_denoised_original_style"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized_original_style")
 
     if getattr(args, "save_reallocation_debug", False):
         dirs["QC_reallocation"] = os.path.join(dirs["QC"], "reallocation")
@@ -490,7 +490,7 @@ def get_fov_folders(args: argparse.Namespace, dirs: dict) -> list:
     if args.check_output_exist:
         fov_folders = [
             f for f in fov_folders
-            if not glob.glob(os.path.join(dirs["unhuddle_norm"], f"{os.path.basename(f)}*"))
+            if not glob.glob(os.path.join(dirs["normalized_unhuddle"], f"{os.path.basename(f)}*"))
         ]
     return fov_folders
 
@@ -591,7 +591,7 @@ def build_feature_args(fov: str, dirs: dict, args: argparse.Namespace):
 def build_reallocation_args(fov: str, dirs: dict, args: argparse.Namespace):
     protein_path = os.path.join(dirs["protein"], f"{os.path.basename(fov)}.csv")
     protein_df = pd.read_csv(protein_path)
-    if args.use_denoised and ("unhuddle_denoised_sum" not in dirs or "unhuddle_denoised_norm" not in dirs):
+    if args.use_denoised and ("unhuddle_denoised_sum" not in dirs or "normalized_unhuddle_denoised" not in dirs):
         import logging
         logging.warning("⚠️ --use_denoised was passed, but denoised directories are missing from `dirs`")
 
@@ -709,7 +709,7 @@ def fitsne(args):
     from unhuddle_denoise.run_fitsne import run_fitsne_dimension_reduction
 
     fitsne_dir = os.path.join(args.output_base_path, "dr_coords")
-    input_dir = os.path.join(args.output_base_path, "unhuddle_denoised_normalized")
+    input_dir = os.path.join(args.output_base_path, "normalized_unhuddle_denoised")
 
     run_fitsne_dimension_reduction(
         output_base=args.output_base_path,
@@ -802,10 +802,10 @@ def run_cohort_normalization_adaptive(
 
     # Define branches and directories
     branch_to_outdir = {
-        "original": dirs.get("original_norm"),
-        "unhuddle": dirs.get("unhuddle_norm"),
-        "denoised": dirs.get("unhuddle_denoised_norm"),
-        "denoised_original_style": dirs.get("unhuddle_denoised_norm_original_style"),
+        "original": dirs.get("normalized_original"),
+        "unhuddle": dirs.get("normalized_unhuddle"),
+        "denoised": dirs.get("normalized_unhuddle_denoised"),
+        "denoised_original_style": dirs.get("normalized_unhuddle_denoised_original_style"),
     }
 
     # Process each branch

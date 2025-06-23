@@ -393,8 +393,10 @@ if (Test-Path "demodata" -and Test-Path "README.md") { Write-Host "Cleaning demo
 │   │   └── original_normalized/   # Before unhuddle -normalized
 │   ├── unhuddle_sum/              # After unhuddle -intensity sums
 │   ├── unhuddle_normalized/       # After unhuddle -normalized
-│   ├── unnuddle_denoised_sum/     # After unhuddle -denoised intensity sums (if --use_denoise) 
-│   └── unhuddle_denoised_normalized/  # After unhuddle -denoised and normalized (if --use_denoise)
+│   ├── unhuddle_denoised_sum/     # After unhuddle -denoised intensity sums (if --use_denoise) 
+│   ├── unhuddle_denoised_normalized/  # After unhuddle -denoised and normalized (if --use_denoise)
+│   ├── unhuddle_denoised_sum_original_style/     # Alternative denoised compilation (if --add_original_compiled_sum)
+│   └── unhuddle_denoised_normalized_original_style/  # Alternative denoised normalized (if --add_original_compiled_sum)
 │
 ├── features/
 │   ├── morphology_features/       # Per-cell morphology metrics
@@ -479,7 +481,7 @@ AnnData object with n_obs × n_vars = 134299 × 39
     obs: 'Area', 'Perimeter', 'Convex_Area', 'Solidity', 'BoundingBox_Area', 'Extent', 'Orientation', 'Eccentricity', 'Equivalent_Diameter', 'Major_Axis_Length', 'Minor_Axis_Length', 'Major_Minor_Axis_Ratio', 'Circularity', 'Form_Factor', 'Euler_Number', 'Nucleus_Area', 'Nucleus_Eccentricity', 'NC_Area_Ratio', 'Centroid_Deviation', 'Mean_DNA1_Intensity', 'Integrated_DNA1_Intensity', 'Mean_DNA2_Intensity', 'Integrated_DNA2_Intensity', 'Mean_HistoneH3_Intensity', 'Integrated_HistoneH3_Intensity', 'QC_no_nucleus', 'fov', 'patient_id', 'summed_intensity', 'total_intensity', 'QC_low_intensity_filter', 'QC_filter_low_quality_region', 'filtering_status', 'QC_fraction_filtered', 'QC_dr_based_filter', 'QC_final_keep'
     uns: 'X_source', 'dr_source', 'fov-list', 'marker-list', 'patient_id-list', 'spatial'
     obsm: 'X_spatial', 'X_tsne'
-    layers: 'ExclMem_Sum', 'sum_original', 'sum_unhuddle', 'sum_unhuddle_denoised'
+    layers: 'ExclMem_Sum', 'sum_original', 'sum_unhuddle', 'sum_unhuddle_denoised', 'normalized_original', 'normalized_unhuddle', 'normalized_unhuddle_denoised'
 ```
 
 </details>  
@@ -490,7 +492,7 @@ AnnData object with n_obs × n_vars = 134299 × 39
 
 ---
 
-# 🚀🚀 Ready for your own data?
+# 🚀 Ready for your own data?
 
 ## 🗂️ Check Input Requirements
 
@@ -615,8 +617,8 @@ For each FOV (field of view) folder, the following stages are run:
 - Output:
   - `/unhuddle_normalized/{fov}.csv`
   - `/original_normalized/{fov}.csv`
-  - `/unhuddle_denoised_normalized/{fov}.csv` (if `--use_denoised` is active)
-  - `/unhuddle_denoised_normalized_original_style/{fov}.csv` (if both `--use_denoised` and `--add_original_compiled_sum` are active)
+  - `/unhuddle_denoised_normalized/{fov}.csv` (if `--use_denoise` is active)
+  - `/unhuddle_denoised_normalized_original_style/{fov}.csv` (if both `--use_denoise` and `--add_original_compiled_sum` are active)
 
 ![Reallocation-Based Denoising](assets/images/example_normalization.png)  
 
@@ -632,10 +634,16 @@ For each FOV (field of view) folder, the following stages are run:
 If preferred, users can perform **custom** normalization and scaling **post pipeline** using the adata object:
 
 ```python
-# Simple per-area normalization
-adata.layers["sum_unhuddle_per_area"] = adata.layers["sum_unhuddle"] / adata.obs["Area"].values[:, None]
-adata.X = adata.layers["sum_unhuddle_per_area"].copy()
-adata.uns["X_source"] = "sum_unhuddle_per_area"
+# Set other layer as the main data matrix (X)
+
+#save current matrix in layer:
+adata.layers["normalized_unhuddle"] = adata.X
+
+#set sum_unhuddle layer in X:
+adata.X = adata.layers["sum_unhuddle"].copy()
+
+#update the the tag X_source declaring what is in X
+adata.uns["X_source"] = "sum_unhuddle"
 ```
 This example jupyter notebook snippet provides a simple per-unit-area normalization, which may be preferable in specific use cases.
 
@@ -818,10 +826,12 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 |-------------------|-----------------------------------------------------------|
 | `sum_unhuddle`    | Corrected per-cell intensities before normalization       |
 | `sum_original`    | Raw intensities prior to interaction reallocation         |
-| `sum_unhuddle_denoised` | Denoised per-cell intensities using solo border method (if `--use_denoised` is used) |
+| `sum_unhuddle_denoised` | Denoised per-cell intensities using solo border method (if `--use_denoise` is used) |
 | `sum_unhuddle_denoised_original_style` | Alternative denoised compilation using original cell sums + reallocation (if `--add_original_compiled_sum` is used) |
-| `unhuddle_denoised` | Normalized denoised intensities (if `--use_denoised` is used) |
-| `unhuddle_denoised_original_style` | Normalized original-style denoised intensities (if both `--use_denoised` and `--add_original_compiled_sum` are used) |
+| `normalized_unhuddle` | Normalized unhuddle intensities (same as `adata.X`) |
+| `normalized_original` | Normalized original intensities |
+| `normalized_unhuddle_denoised` | Normalized denoised intensities (if `--use_denoise` is used) |
+| `normalized_unhuddle_denoised_original_style` | Normalized original-style denoised intensities (if both `--use_denoise` and `--add_original_compiled_sum` are used) |
 
 ---
 
@@ -860,7 +870,7 @@ AnnData object with n_obs × n_vars = 134299 × 39
 obs: 'Area', 'Perimeter', 'Convex_Area', 'Solidity', 'BoundingBox_Area', 'Extent', 'Orientation', 'Eccentricity', 'EquivDiameter', ...
 uns: 'X_source', 'dr_source', 'fov-list', 'marker-list', 'patient_id-list', 'spatial'
 obsm: 'X_spatial', 'X_tsne'
-layers: 'ExclMem_Sum', 'sum_original', 'sum_unhuddle', 'sum_unhuddle_denoised'
+layers: 'ExclMem_Sum', 'sum_original', 'sum_unhuddle', 'sum_unhuddle_denoised', 'normalized_original', 'normalized_unhuddle', 'normalized_unhuddle_denoised'
 
 # Special conventions:
 # cell_id = X.index → {fov}_{Label}
