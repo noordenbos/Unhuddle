@@ -170,6 +170,7 @@ def run_denoising_pipeline_on_dataframe(
     anchor_x: float = 0,
     anchor_y: float = 0,
     sd_multiplier: float = 3,
+    x_anchor_multiplier: float = -1.0,
     signal_q_low: float = 95,
     signal_q_high: float = 99.99,
     min_cells_per_bin: int = 10,
@@ -186,6 +187,7 @@ def run_denoising_pipeline_on_dataframe(
     - layer_suffix: Suffix for intensity columns in df.
     - anchor_x, anchor_y: Coordinates to anchor the noise regression line.
     - sd_multiplier: Multiplier for std dev to define high-morph cutoff.
+    - x_anchor_multiplier: Multiplier for std dev to calculate x-anchor. anchor_x = mean + multiplier * std.
     - signal_q_low, signal_q_high: Quantiles for selecting signal-range residuals.
     - min_cells_per_bin: Minimum cells required for regression.
     - min_area: Minimum morphological value to include.
@@ -219,6 +221,7 @@ def run_denoising_pipeline_on_dataframe(
                 "anchor_x": anchor_x,
                 "anchor_y": anchor_y,
                 "noise_q": noise_q,
+                "x_anchor_multiplier": x_anchor_multiplier,
             }
             continue
 
@@ -227,8 +230,8 @@ def run_denoising_pipeline_on_dataframe(
 
         morph_mean = np.mean(sorted_area)
         morph_std = np.std(sorted_area)
-        # Calculate anchor_x as (morph_mean - morph_std)
-        anchor_x = morph_mean #- morph_std
+        # Calculate anchor_x using the configurable multiplier
+        anchor_x = morph_mean + x_anchor_multiplier * morph_std
         anchor_y = 0
         morph_cutoff = morph_mean + sd_multiplier * morph_std
 
@@ -267,6 +270,7 @@ def run_denoising_pipeline_on_dataframe(
             "anchor_x": anchor_x,
             "anchor_y": anchor_y,
             "noise_q": noise_q,
+            "x_anchor_multiplier": x_anchor_multiplier,
         }
 
     return {"denoised_df": denoised_df, "metadata": metadata}
@@ -350,7 +354,13 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
         layer_suffix=layer_suffix,
         anchor_x=args.signal_anchor_x if hasattr(args, "signal_anchor_x") else 0,
         anchor_y=args.signal_anchor_y if hasattr(args, "signal_anchor_y") else 0,
-        # you can also pass other args here if desired
+        sd_multiplier=getattr(args, "denoise_sd_multiplier", 3.0),
+        x_anchor_multiplier=getattr(args, "denoise_x_anchor_multiplier", -1.0),
+        signal_q_low=getattr(args, "denoise_signal_q_low", 95.0),
+        signal_q_high=getattr(args, "denoise_signal_q_high", 99.99),
+        min_cells_per_bin=getattr(args, "denoise_min_cells_per_bin", 10),
+        min_area=getattr(args, "denoise_min_area", 15.0),
+        noise_q=getattr(args, "denoise_noise_q", 75.0),
     )
     denoised_df  = result["denoised_df"]
     metadata     = result["metadata"]
@@ -379,7 +389,7 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
     except Exception as e:
         logger.error("❌ Failed to save metadata: %s", e)
 
-    # 🚀 Step 4) Persist denoised columns back to each FOV’s protein CSV
+    # 🚀 Step 4) Persist denoised columns back to each FOV's protein CSV
     for fov_name, group in denoised_df.groupby("fov"):
         out_path = os.path.join(protein_dir, f"{fov_name}.csv")
         if not os.path.exists(out_path):
@@ -398,10 +408,83 @@ def compute_denoised_reallocation_factors(protein_csv_paths, dirs, args):
                 logger.info(f"🗑️ Dropping old denoised columns: {den_cols}")
                 prot_df.drop(columns=den_cols, inplace=True)
 
+            # 🚀 Load morphology features to get area information
+            morph_path = os.path.join(dirs["morph"], f"{fov_name}.csv")
+            if os.path.exists(morph_path):
+                morph_df = pd.read_csv(morph_path)
+                logger.debug(f"🔍 Loaded morphology features from {morph_path}")
+            else:
+                logger.warning(f"⚠️ Morphology features not found at {morph_path}")
+                morph_df = None
+
             # 🚀 Append new denoised block
             new_block = group[
                 [c for c in group.columns if c.endswith("_denoised")]
             ].reset_index(drop=True)
+
+            logger.debug(f"🔍 Denoised columns for {fov_name}: {list(new_block.columns)}")
+            logger.debug(f"🔍 New block shape for {fov_name}: {new_block.shape}")
+            logger.debug(f"🔍 Group shape for {fov_name}: {group.shape}")
+            logger.debug(f"🔍 Prot_df shape for {fov_name}: {prot_df.shape}")
+            
+            logger.info(f"🔍 Processing {fov_name}: {len(new_block.columns)} denoised columns, {new_block.shape[0]} rows")
+
+            # 🚀 Compute Mean intensity columns from Sum intensity
+            area_col = "Area"
+            memexcl_area_col = "ExclusionMembrane_Area"
+            
+            if morph_df is not None and memexcl_area_col in morph_df.columns:
+                # Use exclusion membrane areas for mean intensity calculation
+                memexcl_area_values = morph_df[memexcl_area_col].values
+                valid_memexcl_areas = np.where(memexcl_area_values > 0, memexcl_area_values, 1)
+                
+                logger.debug(f"🔍 Exclusion membrane area values for {fov_name}: min={memexcl_area_values.min()}, max={memexcl_area_values.max()}, mean={memexcl_area_values.mean()}")
+                logger.debug(f"🔍 Valid exclusion membrane areas for {fov_name}: min={valid_memexcl_areas.min()}, max={valid_memexcl_areas.max()}, mean={valid_memexcl_areas.mean()}")
+                
+                sum_intensity_cols = [c for c in new_block.columns if c.endswith("_ExclusionMembrane_Sum_Intensity_denoised")]
+                logger.debug(f"🔍 Found {len(sum_intensity_cols)} sum intensity columns: {sum_intensity_cols}")
+                logger.info(f"🔍 Found {len(sum_intensity_cols)} sum intensity columns for mean computation in {fov_name}")
+                
+                for col in new_block.columns:
+                    if col.endswith("_ExclusionMembrane_Sum_Intensity_denoised"):
+                        marker = col.replace("_ExclusionMembrane_Sum_Intensity_denoised", "")
+                        sum_values = new_block[col].values
+                        mean_col = f"{marker}_ExclusionMembrane_Mean_Intensity_denoised"
+                        mean_values = sum_values / valid_memexcl_areas
+                        new_block[mean_col] = mean_values
+                        logger.debug(f"✅ Computed {mean_col} from {col}: sum_min={sum_values.min()}, sum_max={sum_values.max()}, mean_min={mean_values.min()}, mean_max={mean_values.max()}")
+                        logger.info(f"✅ Computed {mean_col} from {col} for {fov_name}")
+                    else:
+                        logger.debug(f"⏭️ Skipping {col} (not a sum intensity column)")
+            elif morph_df is not None and area_col in morph_df.columns:
+                # Fallback to cell areas if exclusion membrane areas not available
+                area_values = morph_df[area_col].values
+                valid_areas = np.where(area_values > 0, area_values, 1)
+                
+                logger.warning(f"⚠️ ExclusionMembrane_Area not found in {morph_path}, using cell areas as fallback")
+                logger.debug(f"🔍 Area values for {fov_name}: min={area_values.min()}, max={area_values.max()}, mean={area_values.mean()}")
+                
+                sum_intensity_cols = [c for c in new_block.columns if c.endswith("_ExclusionMembrane_Sum_Intensity_denoised")]
+                logger.debug(f"🔍 Found {len(sum_intensity_cols)} sum intensity columns: {sum_intensity_cols}")
+                logger.info(f"🔍 Found {len(sum_intensity_cols)} sum intensity columns for mean computation in {fov_name}")
+                
+                for col in new_block.columns:
+                    if col.endswith("_ExclusionMembrane_Sum_Intensity_denoised"):
+                        marker = col.replace("_ExclusionMembrane_Sum_Intensity_denoised", "")
+                        sum_values = new_block[col].values
+                        mean_col = f"{marker}_ExclusionMembrane_Mean_Intensity_denoised"
+                        mean_values = sum_values / valid_areas
+                        new_block[mean_col] = mean_values
+                        logger.debug(f"✅ Computed {mean_col} from {col}: sum_min={sum_values.min()}, sum_max={sum_values.max()}, mean_min={mean_values.min()}, mean_max={mean_values.max()}")
+                        logger.info(f"✅ Computed {mean_col} from {col} for {fov_name}")
+                    else:
+                        logger.debug(f"⏭️ Skipping {col} (not a sum intensity column)")
+            else:
+                logger.warning(f"⚠️ Neither Area nor ExclusionMembrane_Area column found in {morph_path}, skipping mean intensity computation")
+                if morph_df is not None:
+                    logger.debug(f"🔍 Available columns in morph_df: {list(morph_df.columns)}")
+                else:
+                    logger.debug(f"🔍 Morphology file not found")
 
             # 🚀 Alignment check
             if len(new_block) != len(prot_df):

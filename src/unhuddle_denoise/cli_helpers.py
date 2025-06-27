@@ -11,9 +11,72 @@ from datetime import datetime
 from typing import Optional, List, Dict
 from pathlib import Path
 import platform
+import subprocess
 
 
 _LOGGING_INITIALIZED = False
+
+def get_git_info():
+    """Fetches git commit, branch, and tag information."""
+    try:
+        commit = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip().decode('utf-8')
+        branch = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', 'HEAD']).strip().decode('utf-8')
+        try:
+            # Suppress stderr to avoid "fatal: no tag exactly matches" message
+            tag = subprocess.check_output(['git', 'describe', '--tags', '--exact-match'], 
+                                        stderr=subprocess.DEVNULL).strip().decode('utf-8')
+        except subprocess.CalledProcessError:
+            tag = "N/A (not on a tag)"
+        try:
+            dirty = subprocess.check_output(['git', 'status', '--porcelain']).strip().decode('utf-8')
+            status = "dirty" if dirty else "clean"
+        except subprocess.CalledProcessError:
+            status = "unknown"
+        
+        # Get remote tracking information
+        try:
+            remote_info = subprocess.check_output(['git', 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'], 
+                                                stderr=subprocess.DEVNULL).strip().decode('utf-8')
+            remote_branch = remote_info
+            
+            # Extract remote name and get its URL
+            remote_name = remote_info.split('/')[0]  # e.g., "origin" from "origin/main"
+            try:
+                remote_url = subprocess.check_output(['git', 'remote', 'get-url', remote_name], 
+                                                   stderr=subprocess.DEVNULL).strip().decode('utf-8')
+            except subprocess.CalledProcessError:
+                remote_url = "N/A (cannot get remote URL)"
+        except subprocess.CalledProcessError:
+            remote_branch = "N/A (no upstream branch)"
+            remote_url = "N/A (no upstream branch)"
+        
+        # Get local vs remote status
+        try:
+            local_commit = subprocess.check_output(['git', 'rev-parse', 'HEAD']).strip().decode('utf-8')
+            remote_commit = subprocess.check_output(['git', 'rev-parse', remote_info], 
+                                                  stderr=subprocess.DEVNULL).strip().decode('utf-8')
+            
+            if local_commit == remote_commit:
+                sync_status = "up-to-date"
+            else:
+                # Check if local is ahead/behind
+                ahead = subprocess.check_output(['git', 'rev-list', '--count', f'{remote_info}..HEAD'], 
+                                              stderr=subprocess.DEVNULL).strip().decode('utf-8')
+                behind = subprocess.check_output(['git', 'rev-list', '--count', f'HEAD..{remote_info}'], 
+                                               stderr=subprocess.DEVNULL).strip().decode('utf-8')
+                
+                if ahead != '0' and behind != '0':
+                    sync_status = f"diverged (+{ahead}/-{behind})"
+                elif ahead != '0':
+                    sync_status = f"ahead by {ahead}"
+                else:
+                    sync_status = f"behind by {behind}"
+        except subprocess.CalledProcessError:
+            sync_status = "N/A (cannot determine)"
+            
+        return commit, branch, tag, status, remote_branch, remote_url, sync_status
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        return "N/A", "N/A", "N/A", "N/A (git not found or not a git repo)", "N/A", "N/A", "N/A"
 
 def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> None:
     """
@@ -44,7 +107,7 @@ def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> Non
     # ── Patch console stream for Unicode safety ───────
     if hasattr(console_handler.stream, 'reconfigure'):
         try:
-            console_handler.stream.reconfigure(encoding='utf-8', errors='ignore')
+            console_handler.stream.reconfigure(encoding='utf-8', errors='ignore') # type: ignore
         except Exception:
             pass  # Safe fallback if reconfigure not supported
 
@@ -68,6 +131,18 @@ def setup_logging(log_level: str, output_base_path: Optional[str] = None) -> Non
         root.info(f"    CUDA_VISIBLE_DEVICES: {os.environ.get('CUDA_VISIBLE_DEVICES', 'not set')}")
         root.info(f"    NumPy version: {sys.modules.get('numpy', 'not loaded')}")
         root.info(f"    Working directory: {os.getcwd()}")
+        
+        # Add git info
+        commit, branch, tag, status, remote_branch, remote_url, sync_status = get_git_info()
+        root.info("📦 Version Control:")
+        root.info(f"    Commit: {commit}")
+        root.info(f"    Branch: {branch}")
+        root.info(f"    Tag: {tag}")
+        root.info(f"    Status: {status}")
+        root.info(f"    Remote: {remote_branch}")
+        root.info(f"    Remote URL: {remote_url}")
+        root.info(f"    Sync: {sync_status}")
+
         root.info(f"📁 Full pipeline log will be saved to: {log_path}")
 
     # ── Optional Library Tuning (DEBUG only) ──────────
@@ -146,8 +221,10 @@ def parse_arguments() -> argparse.Namespace:
         default=10,
         help="Objective magnification to select in DeepCell UI (e.g., 10, 20, 40)"
     )
-    parser.add_argument("--use_denoised", dest="use_denoised", action="store_true",
-                        help="Experimental, uses cohort level data to denoise reallocation factors")
+    parser.add_argument("--use_denoised", dest="use_denoised", action="store_true", default=True,
+                        help="Uses cohort level data to denoise reallocation factors (enabled by default)")
+    parser.add_argument("--no_denoise", dest="use_denoised", action="store_false",
+                        help="Disable denoising (not recommended)")
     parser.add_argument("--use_denoise", dest="use_denoised", action="store_true",
                         help=argparse.SUPPRESS)
     parser.add_argument("--fitsne", action="store_true",
@@ -193,8 +270,72 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument(
         "--denoise_method",
         choices=["percentile", "noisecone"],
-        default="percentile",
-        help="Denoise on general lower percentile per size bin (percentile) or regression on large noisy cells (noisecone). Default: percentile"
+        default="noisecone",
+        help="Denoise on general lower percentile per size bin (percentile, expert usage only) or regression on large noisy cells (noisecone, recommended). Default: noisecone"
+    )
+    parser.add_argument(
+        "--denoise_x_anchor_multiplier",
+        type=float,
+        default=-1.0,
+        help="Multiplier for standard deviation to calculate x-anchor in noise cone denoising. anchor_x = mean + multiplier * std. Default: -1.0 (1 std below mean)"
+    )
+    # Hidden advanced denoising parameters
+    parser.add_argument(
+        "--denoise_sd_multiplier",
+        type=float,
+        default=3.0,
+        help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--denoise_signal_q_low",
+        type=float,
+        default=95.0,
+        help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--denoise_signal_q_high",
+        type=float,
+        default=99.99,
+        help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--denoise_min_cells_per_bin",
+        type=int,
+        default=10,
+        help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--denoise_min_area",
+        type=float,
+        default=15.0,
+        help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--denoise_noise_q",
+        type=float,
+        default=75.0,
+        help=argparse.SUPPRESS
+    )
+    parser.add_argument(
+        "--save_reallocation_debug",
+        action="store_true",
+        help="Save reallocation dictionaries and solo border pixel data to JSON files for debugging and validation"
+    )
+    parser.add_argument(
+        "--add_original_compiled_sum",
+        action="store_true", default=True,
+        help="Use original-style compilation (original_sum + reallocated - taken) as the default denoised method. This creates the standard layer in the AnnData object."
+    )
+    parser.add_argument(
+        "--no_original_compiled_sum",
+        dest="add_original_compiled_sum",
+        action="store_false",
+        help="Disable original-style compilation (not recommended)"
+    )
+    parser.add_argument(
+        "--add_strong_denoiser",
+        action="store_true", default=False,
+        help="Add strong denoised sum data using solo-border compilation (denoised_residuals + reallocated + solo_border_pixels). Expert usage only - creates additional layer in AnnData object."
     )
 
     return parser.parse_args()
@@ -215,6 +356,7 @@ def count_total_cells_from_csvs(csv_dir: str) -> int:
     Count the total number of cells in a folder containing per-FOV CSVs
     (each row corresponds to a cell; assumes header row is present).
     """
+    logger = logging.getLogger(__name__)
     total = 0
     csv_files = glob.glob(os.path.join(csv_dir, "*.csv"))
     for path in csv_files:
@@ -310,9 +452,9 @@ def setup_output_directories(output_base: str, args) -> dict:
         "protein": os.path.join(output_base, "features", "protein_features"),
         "original_tables": os.path.join(output_base, "processed_data", "original_tables"),
         "original_sum": os.path.join(output_base, "processed_data", "original_tables", "original_sum"),
-        "original_norm": os.path.join(output_base, "processed_data", "original_tables", "original_normalized"),
+        "normalized_original": os.path.join(output_base, "processed_data", "original_tables", "original_normalized"),
         "unhuddle_sum": os.path.join(output_base, "processed_data", "unhuddle_sum"),
-        "unhuddle_norm": os.path.join(output_base, "processed_data", "unhuddle_normalized"),
+        "normalized_unhuddle": os.path.join(output_base, "processed_data", "unhuddle_normalized"),
         "QC": os.path.join(output_base, "QC"),
         "QC_normstats": os.path.join(output_base, "QC", "normalization","norm_stats"),
     }
@@ -326,8 +468,21 @@ def setup_output_directories(output_base: str, args) -> dict:
 
     if getattr(args, "use_denoised", False):
         dirs["unhuddle_denoised_sum"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum")
-        dirs["unhuddle_denoised_norm"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized")
+        dirs["normalized_unhuddle_denoised"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized")
         dirs["QC_metadata_denoised"] = os.path.join(output_base, "QC", "denoiser")
+        
+        # Add directory for original-style compilation (now default)
+        if getattr(args, "add_original_compiled_sum", True):
+            dirs["unhuddle_denoised_sum_original_style"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum_original_style")
+            dirs["normalized_unhuddle_denoised_original_style"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized_original_style")
+        
+        # Add directory for strong denoiser (solo border method) if requested
+        if getattr(args, "add_strong_denoiser", False):
+            dirs["unhuddle_denoised_sum_strong"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum_strong")
+            dirs["normalized_unhuddle_denoised_strong"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized_strong")
+
+    if getattr(args, "save_reallocation_debug", False):
+        dirs["QC_reallocation"] = os.path.join(dirs["QC"], "reallocation")
 
     # Actually create the folders
     for path in dirs.values():
@@ -353,7 +508,7 @@ def get_fov_folders(args: argparse.Namespace, dirs: dict) -> list:
     if args.check_output_exist:
         fov_folders = [
             f for f in fov_folders
-            if not glob.glob(os.path.join(dirs["unhuddle_norm"], f"{os.path.basename(f)}*"))
+            if not glob.glob(os.path.join(dirs["normalized_unhuddle"], f"{os.path.basename(f)}*"))
         ]
     return fov_folders
 
@@ -454,7 +609,7 @@ def build_feature_args(fov: str, dirs: dict, args: argparse.Namespace):
 def build_reallocation_args(fov: str, dirs: dict, args: argparse.Namespace):
     protein_path = os.path.join(dirs["protein"], f"{os.path.basename(fov)}.csv")
     protein_df = pd.read_csv(protein_path)
-    if args.use_denoised and ("unhuddle_denoised_sum" not in dirs or "unhuddle_denoised_norm" not in dirs):
+    if args.use_denoised and ("unhuddle_denoised_sum" not in dirs or "normalized_unhuddle_denoised" not in dirs):
         import logging
         logging.warning("⚠️ --use_denoised was passed, but denoised directories are missing from `dirs`")
 
@@ -465,6 +620,8 @@ def build_reallocation_args(fov: str, dirs: dict, args: argparse.Namespace):
         args.normalization_markers,
         args.use_denoised,
         args.log_level,
+        args.save_reallocation_debug,
+        getattr(args, "add_strong_denoiser", False),
     )
 
 
@@ -570,7 +727,7 @@ def fitsne(args):
     from unhuddle_denoise.run_fitsne import run_fitsne_dimension_reduction
 
     fitsne_dir = os.path.join(args.output_base_path, "dr_coords")
-    input_dir = os.path.join(args.output_base_path, "unhuddle_denoised_normalized")
+    input_dir = os.path.join(args.output_base_path, "normalized_unhuddle_denoised")
 
     run_fitsne_dimension_reduction(
         output_base=args.output_base_path,
@@ -663,9 +820,11 @@ def run_cohort_normalization_adaptive(
 
     # Define branches and directories
     branch_to_outdir = {
-        "original": dirs.get("original_norm"),
-        "unhuddle": dirs.get("unhuddle_norm"),
-        "denoised": dirs.get("unhuddle_denoised_norm"),
+        "original": dirs.get("normalized_original"),
+        "unhuddle": dirs.get("normalized_unhuddle"),
+        "denoised": dirs.get("normalized_unhuddle_denoised"),
+        "denoised_original_style": dirs.get("normalized_unhuddle_denoised_original_style"),
+        "denoised_strong": dirs.get("normalized_unhuddle_denoised_strong"),
     }
 
     # Process each branch

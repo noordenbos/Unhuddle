@@ -76,7 +76,7 @@ def main():
         raise ValueError("Cannot use both --fitsne and --add_dimensionreduction_coords. Choose one.")
 
     if args.use_denoised:
-        logger.info("⚙️ Denoiser enabled — cohort-level ExclMem_Sum data will be fetched before FOV loop.")
+        logger.info("⚙️ Denoiser enabled — cohort-level denoising will be applied using the noisecone method.")
 
     # Setup paths and input FOVs
     dirs = setup_output_directories(args.output_base_path, args)
@@ -129,7 +129,7 @@ def main():
     if args.use_denoised:
         logger.info(f"📊 Computing denoised reallocation factors (cohort-wide), following method: {args.denoise_method}")
         denoise_pipeline(args, dirs)
-        logger.info("✅ Simple percentile denoising complete. QC & outputs in %s", dirs['QC_metadata_denoised'])
+        logger.info("✅ Denoising complete. QC & outputs in %s", dirs['QC_metadata_denoised'])
 
     # Stage 2b: Reallocation
     results_stage2 = run_parallel_stage(
@@ -142,7 +142,7 @@ def main():
     successful = [os.path.basename(fov) for fov, res in results_stage2.items() if not result_failed(res)]
     if successful:
         print("📁 Processed FOV folders have updated masks and overlays — check the pseudocolored mask renders for validation.")
-        print(f"📄 Unhuddle normalized output (partial): {dirs['unhuddle_norm']}")
+        print(f"📄 Unhuddle normalized output (partial): {dirs['normalized_unhuddle']}")
         print(f"📄 Cell-level morphology metrics: {dirs['morph']}")
         print(f"📄 Raw/pre-normalization values: {args.output_base_path}\n")
 
@@ -157,13 +157,23 @@ def main():
     logger.debug(f"🧬 Markers selected for normalization: {protein_features}")
     logger.debug(f"🧪 Sensor markers: {args.normalization_markers}")
 
+    # Build sum_dirs dictionary, filtering out None values
+    sum_dirs = {
+        'original': dirs['original_sum'],
+        'unhuddle': dirs['unhuddle_sum'],
+    }
+    
+    # Add denoised directories if they exist
+    if dirs.get('unhuddle_denoised_sum'):
+        sum_dirs['denoised'] = dirs['unhuddle_denoised_sum']
+    if dirs.get('unhuddle_denoised_sum_original_style'):
+        sum_dirs['denoised_original_style'] = dirs['unhuddle_denoised_sum_original_style']
+    if dirs.get('unhuddle_denoised_sum_strong'):
+        sum_dirs['denoised_strong'] = dirs['unhuddle_denoised_sum_strong']
+
     run_cohort_normalization_adaptive(
         fov_folders=fov_folders,
-        sum_dirs={
-            'original': dirs['original_sum'],
-            'unhuddle': dirs['unhuddle_sum'],
-            'denoised': dirs.get('unhuddle_denoised_sum')
-        },
+        sum_dirs=sum_dirs,
         dirs=dirs,
         markers=protein_features,
         sensor_markers=args.normalization_markers,

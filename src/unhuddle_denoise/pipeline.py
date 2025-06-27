@@ -12,8 +12,13 @@ from unhuddle_denoise.interactions import (
     merge_interactions,
     integrate_intensities_for_interactions,
     compute_reallocation_with_checks,
+    compute_reallocation_original,
+    compute_reallocation_denoised,
     settle_debts_intensity,
-    settle_debts_from_residuals
+    settle_debts_from_residuals,
+    settle_debts_from_residuals_original_style,
+    save_reallocation_debug_data,
+    compute_solo_border_pixels
 )
 from unhuddle_denoise.deepcell import create_deepcell_mask_overlay, process_deepcell_overlay
 
@@ -87,19 +92,19 @@ def process_fov_features_only(
             result["nuclear_mask_created"] = False
 
         try:
-            morph_features = extract_morphology_features(fov_path, cell_mask, files, nuclear_markers, nuclear_mask, dirs=dirs)
-            result["morphology_extracted"] = True
-        except Exception as e:
-            logger.error(f"❌ Morphology feature extraction failed: {e}")
-            result["feature_extraction_error"] = f"Morphology: {e}"
-            return result
-
-        try:
             membrane_mask, memexcl_mask = process_membrane_masks(fov_path, cell_mask)
             result["membrane_masks_generated"] = True
         except Exception as e:
             logger.error(f"❌ Membrane mask processing failed: {e}")
             result["feature_extraction_error"] = f"Membrane masks: {e}"
+            return result
+
+        try:
+            morph_features = extract_morphology_features(fov_path, cell_mask, files, nuclear_markers, nuclear_mask, memexcl_mask, dirs=dirs)
+            result["morphology_extracted"] = True
+        except Exception as e:
+            logger.error(f"❌ Morphology feature extraction failed: {e}")
+            result["feature_extraction_error"] = f"Morphology: {e}"
             return result
 
         try:
@@ -125,7 +130,9 @@ def process_fov_reallocation_only(
     dirs,
     markers_for_normalization,
     use_denoised,
-    log_level
+    log_level,
+    save_reallocation_debug=False,
+    add_strong_denoiser=False
 ):
     from unhuddle_denoise.cli_helpers import setup_logging
     setup_logging(log_level)
@@ -153,33 +160,92 @@ def process_fov_reallocation_only(
         merged = merge_interactions(border_int, background_int)
         all_interactions = integrate_intensities_for_interactions(fov_path, merged)
 
-        # ── Compute reallocation ────────────────────────────────────────
-        reallocation = compute_reallocation_with_checks(
-            all_interactions, protein_features, tol=1e-6, use_denoised=use_denoised
+        # ── Canonical: Always run reallocation with original intensities ──
+        logger.info(f"🔁 Running canonical reallocation (original intensities) for FOV: {fov_path}")
+        reallocation_original = compute_reallocation_original(
+            all_interactions, protein_features, tol=1e-6
         )
+        original_sum_df, corrected_sum_df = settle_debts_intensity(
+            fov_path, reallocation_original, protein_features, dirs
+        )
+        result["intensity_settled"] = True
 
-        # ── Optional: Denoised Reallocation ─────────────────────────────
-        if use_denoised and "unhuddle_denoised_sum" in dirs and "unhuddle_denoised_norm" in dirs:
-            logger.info(f"🔁 Running denoised reallocation for FOV: {fov_path}")
-            denoised_df = settle_debts_from_residuals(
-                fov_folder=fov_path,
-                reallocation=reallocation,
-                protein_features=protein_features,
-                cell_mask=cell_mask,
-                membrane_mask=membrane_mask,
-                sensor_markers=markers_for_normalization,
-                dirs=dirs
-            )
-
-            result["intensity_settled_denoised"] = True
+        # ── Optional: Denoised Reallocation (separate branch) ─────────────
+        reallocation_denoised = None
+        solo_border_intensity = None
+        
+        if use_denoised and "unhuddle_denoised_sum" in dirs and "normalized_unhuddle_denoised" in dirs:
+            logger.info(f"🔁 Running experimental denoised reallocation for FOV: {fov_path}")
+            
+            # Check if denoised data is available
+            denoised_cols = [c for c in protein_features.columns if c.endswith("_ExclusionMembrane_Sum_Intensity_denoised")]
+            if not denoised_cols:
+                logger.warning(f"⚠️ No denoised columns found for {fov_path}, skipping denoised reallocation")
+                result["denoised_skipped"] = "no_denoised_columns"
+            else:
+                # Use separate reallocation function with denoised intensities
+                reallocation_denoised = compute_reallocation_denoised(
+                    all_interactions, protein_features, tol=1e-6
+                )
+                
+                # Default: Run original-style compilation (original_sum + reallocated - taken)
+                logger.info(f"🔁 Running default original-style denoised sum compilation")
+                original_style_df = settle_debts_from_residuals_original_style(
+                    fov_folder=fov_path,
+                    reallocation=reallocation_denoised,
+                    protein_features=protein_features,
+                    dirs=dirs
+                )
+                # Save to the default directory for original-style compilation
+                fov_name = os.path.basename(fov_path)
+                original_style_path = os.path.join(dirs["unhuddle_denoised_sum_original_style"], f"{fov_name}.csv")
+                original_style_df.to_csv(original_style_path, index=False)
+                logger.info(f"📝 Saved default original-style denoised sum to {original_style_path}")
+                
+                # Optional: Add strong denoiser (solo-border method) as extra data
+                if add_strong_denoiser:
+                    logger.info(f"🔁 Adding strong denoiser (solo-border method) for expert usage")
+                    # Get solo border pixel data
+                    markers = [c.replace("_ExclusionMembrane_Sum_Intensity_denoised", "") for c in denoised_cols]
+                    solo_border_intensity = compute_solo_border_pixels(cell_mask, membrane_mask, fov_path, markers)
+                    
+                    strong_denoised_df = settle_debts_from_residuals(
+                        fov_folder=fov_path,
+                        reallocation=reallocation_denoised,
+                        protein_features=protein_features,
+                        cell_mask=cell_mask,
+                        membrane_mask=membrane_mask,
+                        sensor_markers=markers_for_normalization,
+                        dirs=dirs
+                    )
+                    # Save to the strong denoiser directory
+                    strong_path = os.path.join(dirs["unhuddle_denoised_sum_strong"], f"{fov_name}.csv")
+                    strong_denoised_df.to_csv(strong_path, index=False)
+                    logger.info(f"📝 Saved strong denoiser (solo-border) sum to {strong_path}")
+                else:
+                    solo_border_intensity = None
+                
+                result["intensity_settled_denoised"] = True
         else:
             logger.info(f"ℹ️ Skipping denoised reallocation for {fov_path} — flag or output dirs not set.")
 
-        # ── Canonical: always run ──────────────────────────────────────
-        original_sum_df, corrected_sum_df = settle_debts_intensity(
-            fov_path, reallocation, protein_features, dirs
-        )
-        result["intensity_settled"] = True
+        # ── Save debug data if requested ──────────────────────────────────
+        if save_reallocation_debug:
+            fov_name = os.path.basename(fov_path)
+            output_dir = dirs.get("QC_reallocation")
+            if output_dir:
+                logger.info(f"💾 Saving reallocation debug data for FOV: {fov_name}")
+                save_reallocation_debug_data(
+                    fov_name=fov_name,
+                    reallocation_original=reallocation_original,
+                    reallocation_denoised=reallocation_denoised,
+                    solo_border_intensity=solo_border_intensity,
+                    interactions=all_interactions,
+                    output_dir=output_dir
+                )
+                result["debug_data_saved"] = True
+            else:
+                logger.warning(f"⚠️ QC_reallocation directory not found, skipping debug data save")
 
     except Exception as e:
         logger.error(f"❌ Reallocation failed for {fov_path}: {e}")

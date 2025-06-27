@@ -121,6 +121,22 @@ def update_proteins(denoised, protein_dir):
         # pick new cols
         new_cols = [c for c in grp.columns if c.endswith("_denoised")]
         block = grp[new_cols].reset_index(drop=True)
+        
+        # 🚀 Compute Mean intensity columns from Sum intensity
+        area_col = "Area"
+        if area_col in prot.columns:
+            area_values = prot[area_col].values
+            valid_areas = np.where(area_values > 0, area_values, 1)
+            
+            for col in block.columns:
+                if col.endswith("_ExclusionMembrane_Sum_Intensity_denoised"):
+                    marker = col.replace("_ExclusionMembrane_Sum_Intensity_denoised", "")
+                    sum_values = block[col].values
+                    mean_col = f"{marker}_ExclusionMembrane_Mean_Intensity_denoised"
+                    mean_values = sum_values / valid_areas
+                    block[mean_col] = mean_values
+                    logging.debug(f"✅ Computed {mean_col} from {col}")
+        
         if len(block) != len(prot):
             logging.warning("Row count mismatch for %s, skipping write", fov)
             continue
