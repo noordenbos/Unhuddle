@@ -554,9 +554,9 @@ def settle_debts_from_residuals_original_style(
                 taken_val = d["taken_intensity"].get(m, 0)
                 denoised_sum_df.loc[denoised_sum_df["Label"] == label, m] = original_cell_val + reallocated_val - taken_val
 
-    # Save to the separate directory for original-style compilation
-    denoised_sum_df.to_csv(os.path.join(dirs["unhuddle_denoised_sum_original_style"], f"{fov_name}.csv"), index=False)
-    logger.info(f"📝 Saved original-style denoised sum to {fov_name}.csv")
+    # Save to the default directory for denoised compilation
+    denoised_sum_df.to_csv(os.path.join(dirs["unhuddle_denoised_sum"], f"{fov_name}.csv"), index=False)
+    logger.info(f"📝 Saved denoised sum to {fov_name}.csv")
 
     return denoised_sum_df
 

@@ -70,12 +70,13 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
             "morph": p("morph"),
             "denoised_intensity": p("normalized_unhuddle_denoised"),
             "denoised_sum": p("unhuddle_denoised_sum"),
-            "denoised_intensity_original_style": p("normalized_unhuddle_denoised_original_style"),
+            "denoised_intensity_strong": p("normalized_unhuddle_denoised_strong"),
+            "denoised_sum_strong": p("unhuddle_denoised_sum_strong"),
             "protein": p("protein"),
             "normalized_unhuddle": p("normalized_unhuddle"),
             "normalized_original": p("normalized_original") if "normalized_original" in dirs else None,
             "normalized_unhuddle_denoised": p("normalized_unhuddle_denoised") if "normalized_unhuddle_denoised" in dirs else None,
-            "normalized_unhuddle_denoised_original_style": p("normalized_unhuddle_denoised_original_style") if "normalized_unhuddle_denoised_original_style" in dirs else None,
+            "normalized_unhuddle_denoised_strong": p("normalized_unhuddle_denoised_strong") if "normalized_unhuddle_denoised_strong" in dirs else None,
         }
 
         if not all(paths[k] and paths[k].is_file() for k in ["intensity", "sum", "orig_sum", "morph"]):
@@ -88,7 +89,8 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
         morph = convert_numeric(load_df(paths["morph"], fov))
         denoised_intensity = convert_numeric(load_df(paths["denoised_intensity"], fov))[markers] if paths["denoised_intensity"] and paths["denoised_intensity"].is_file() else None
         denoised_sum = convert_numeric(load_df(paths["denoised_sum"], fov))[markers] if paths["denoised_sum"] and paths["denoised_sum"].is_file() else None
-        denoised_intensity_original_style = convert_numeric(load_df(paths["denoised_intensity_original_style"], fov))[markers] if paths["denoised_intensity_original_style"] and paths["denoised_intensity_original_style"].is_file() else None
+        denoised_intensity_strong = convert_numeric(load_df(paths["denoised_intensity_strong"], fov))[markers] if paths["denoised_intensity_strong"] and paths["denoised_intensity_strong"].is_file() else None
+        denoised_sum_strong = convert_numeric(load_df(paths["denoised_sum_strong"], fov))[markers] if paths["denoised_sum_strong"] and paths["denoised_sum_strong"].is_file() else None
         protein_df = convert_numeric(load_df(paths["protein"], fov)) if paths["protein"] and paths["protein"].is_file() else None
 
         if all(col in morph.columns for col in ["Nucleus_Area", "Nucleus_Centroid_Row"]):
@@ -124,11 +126,6 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
         if norm_denoised_path is not None and norm_denoised_path.is_file():
             norm_denoised = convert_numeric(load_df(str(norm_denoised_path), fov))[markers]
             all_layers["normalized_unhuddle_denoised"].append(norm_denoised.values)
-        # 4. normalized_unhuddle_denoised_original_style (from normalized_unhuddle_denoised_original_style)
-        norm_denoised_orig_path = paths["normalized_unhuddle_denoised_original_style"]
-        if norm_denoised_orig_path is not None and norm_denoised_orig_path.is_file():
-            norm_denoised_orig = convert_numeric(load_df(str(norm_denoised_orig_path), fov))[markers]
-            all_layers["normalized_unhuddle_denoised_original_style"].append(norm_denoised_orig.values)
 
         # If denoised is requested and present, store in a layer
         if denoised_intensity is not None and denoised_sum is not None:
@@ -142,24 +139,17 @@ def build_adata_from_outputs(dirs: dict, working_path: str, output_adata_name: s
         else:
             logger.debug(f"🟡 No denoised data for FOV: {fov} (no layer stored)")
 
-        # If normalized original-style denoised data is present, store in a layer
-        if denoised_intensity_original_style is not None:
-            if "unhuddle_denoised_original_style" not in all_layers:
-                all_layers["unhuddle_denoised_original_style"] = []
-            all_layers["unhuddle_denoised_original_style"].append(denoised_intensity_original_style.values)
-            logger.debug(f"🧪 Extra: Normalized original-style denoised intensity available for FOV: {fov} (stored in layers)")
+        # If strong denoiser is requested and present, store in a layer
+        if denoised_intensity_strong is not None and denoised_sum_strong is not None:
+            if "sum_unhuddle_denoised_strong" not in all_layers:
+                all_layers["sum_unhuddle_denoised_strong"] = []
+            if "unhuddle_denoised_strong" not in all_layers:
+                all_layers["unhuddle_denoised_strong"] = []
+            all_layers["sum_unhuddle_denoised_strong"].append(denoised_sum_strong.values)
+            all_layers["unhuddle_denoised_strong"].append(denoised_intensity_strong.values)
+            logger.debug(f"🧪 Strong denoiser: Denoised intensity available for FOV: {fov} (stored in layers)")
         else:
-            logger.debug(f"🟡 No normalized original-style denoised data for FOV: {fov} (no layer stored)")
-
-        # Check for extra original-style CSV files in the separate directory
-        if "unhuddle_denoised_sum_original_style" in dirs:
-            original_style_path = os.path.join(dirs["unhuddle_denoised_sum_original_style"], f"{fov}.csv")
-            if os.path.exists(original_style_path):
-                original_style_df = convert_numeric(load_df(original_style_path, fov))[markers]
-                if "sum_unhuddle_denoised_original_style" not in all_layers:
-                    all_layers["sum_unhuddle_denoised_original_style"] = []
-                all_layers["sum_unhuddle_denoised_original_style"].append(original_style_df.values)
-                logger.debug(f"🧪 Extra: Original-style denoised sum loaded for FOV: {fov}")
+            logger.debug(f"🟡 No strong denoiser data for FOV: {fov} (no layer stored)")
 
         log_column_stats(X, fov)
 

@@ -174,7 +174,7 @@ def process_fov_reallocation_only(
         reallocation_denoised = None
         solo_border_intensity = None
         
-        if use_denoised and "unhuddle_denoised_sum" in dirs and "normalized_unhuddle_denoised" in dirs:
+        if use_denoised and "unhuddle_denoised_sum" in dirs:
             logger.info(f"🔁 Running experimental denoised reallocation for FOV: {fov_path}")
             
             # Check if denoised data is available
@@ -198,7 +198,7 @@ def process_fov_reallocation_only(
                 )
                 # Save to the default directory for original-style compilation
                 fov_name = os.path.basename(fov_path)
-                original_style_path = os.path.join(dirs["unhuddle_denoised_sum_original_style"], f"{fov_name}.csv")
+                original_style_path = os.path.join(dirs["unhuddle_denoised_sum"], f"{fov_name}.csv")
                 original_style_df.to_csv(original_style_path, index=False)
                 logger.info(f"📝 Saved default original-style denoised sum to {original_style_path}")
                 

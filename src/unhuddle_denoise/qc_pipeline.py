@@ -68,7 +68,7 @@ def perform_density_filtering(
         
         # Create figure for density map
         fig, ax = plt.subplots(figsize=(6, 6))
-        im = ax.imshow(dm, cmap='hot', vmin=density_scale[0], vmax=density_scale[1])
+        im = ax.imshow(dm, cmap='hot_r', vmin=density_scale[0], vmax=density_scale[1])
         ax.axis('off')
         
         # Save as PNG
@@ -742,7 +742,7 @@ def run_qc_from_memory(args, adata, dirs):
 
 def create_density_scale_legend(density_dir, density_scale=(0, 800), density_threshold=550):
     """
-    Create a density scale legend showing the color mapping and threshold.
+    Create a simple density scale legend showing the color mapping and threshold.
     
     Args:
         density_dir (str): Directory to save the legend files
@@ -750,35 +750,31 @@ def create_density_scale_legend(density_dir, density_scale=(0, 800), density_thr
         density_threshold (float): Threshold value for filtering
     """
     import matplotlib.pyplot as plt
-    import matplotlib.patches as patches
     
     # Create figure with just the colorbar
-    fig, ax = plt.subplots(figsize=(2, 6))
+    fig, ax = plt.subplots(figsize=(1, 4))
     
-    # Create a gradient for the colorbar
+    # Create a gradient for the colorbar (inverted hot colormap)
     gradient = np.linspace(density_scale[0], density_scale[1], 256).reshape(-1, 1)
     
-    # Display the gradient as an image
-    im = ax.imshow(gradient, cmap='hot', aspect='auto', 
+    # Display the gradient as an image with inverted hot colormap
+    im = ax.imshow(gradient, cmap='hot_r', aspect='auto', 
                    extent=[0, 1, density_scale[0], density_scale[1]])
     
-    # Add colorbar
-    cbar = plt.colorbar(im, ax=ax, orientation='vertical', shrink=0.8)
-    cbar.set_label('Density (cells per window)', fontsize=10)
-    
-    # Add threshold line
+    # Add threshold line and annotation
     if density_threshold > density_scale[0] and density_threshold < density_scale[1]:
-        ax.axhline(y=density_threshold, color='white', linestyle='--', linewidth=2, 
-                  label=f'Threshold ({density_threshold})')
-        ax.legend(loc='upper right', fontsize=8)
+        ax.axhline(y=density_threshold, color='white', linestyle='--', linewidth=2)
+        ax.text(0.5, density_threshold + (density_scale[1] - density_scale[0]) * 0.02, 
+                f'Threshold: {density_threshold}', 
+                ha='center', va='bottom', color='white', fontsize=8, 
+                bbox=dict(boxstyle='round,pad=0.2', facecolor='black', alpha=0.7))
     
-    # Set title and labels
+    # Set title
     ax.set_title('Density Scale', fontsize=12, pad=20)
-    ax.set_xlabel('')
-    ax.set_ylabel('Density Value', fontsize=10)
     
-    # Remove x-axis ticks
+    # Remove x-axis ticks and labels
     ax.set_xticks([])
+    ax.set_xlabel('')
     
     # Adjust layout
     plt.tight_layout()

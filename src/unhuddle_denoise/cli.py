@@ -163,13 +163,16 @@ def main():
         'unhuddle': dirs['unhuddle_sum'],
     }
     
-    # Add denoised directories if they exist
-    if dirs.get('unhuddle_denoised_sum'):
-        sum_dirs['denoised'] = dirs['unhuddle_denoised_sum']
-    if dirs.get('unhuddle_denoised_sum_original_style'):
-        sum_dirs['denoised_original_style'] = dirs['unhuddle_denoised_sum_original_style']
-    if dirs.get('unhuddle_denoised_sum_strong'):
-        sum_dirs['denoised_strong'] = dirs['unhuddle_denoised_sum_strong']
+    # Add denoised directories if they exist and contain CSV files
+    if dirs.get('unhuddle_denoised_sum') and os.path.exists(dirs['unhuddle_denoised_sum']):
+        csv_files = [f for f in os.listdir(dirs['unhuddle_denoised_sum']) if f.endswith('.csv')]
+        if csv_files:
+            sum_dirs['denoised'] = dirs['unhuddle_denoised_sum']
+    
+    if dirs.get('unhuddle_denoised_sum_strong') and os.path.exists(dirs['unhuddle_denoised_sum_strong']):
+        csv_files = [f for f in os.listdir(dirs['unhuddle_denoised_sum_strong']) if f.endswith('.csv')]
+        if csv_files:
+            sum_dirs['denoised_strong'] = dirs['unhuddle_denoised_sum_strong']
 
     run_cohort_normalization_adaptive(
         fov_folders=fov_folders,

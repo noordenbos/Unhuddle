@@ -467,14 +467,10 @@ def setup_output_directories(output_base: str, args) -> dict:
         dirs["dr"] = os.path.join(output_base, "dr_coords")
 
     if getattr(args, "use_denoised", False):
+        # Default denoised directories (original-style compilation)
         dirs["unhuddle_denoised_sum"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum")
         dirs["normalized_unhuddle_denoised"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized")
         dirs["QC_metadata_denoised"] = os.path.join(output_base, "QC", "denoiser")
-        
-        # Add directory for original-style compilation (now default)
-        if getattr(args, "add_original_compiled_sum", True):
-            dirs["unhuddle_denoised_sum_original_style"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum_original_style")
-            dirs["normalized_unhuddle_denoised_original_style"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized_original_style")
         
         # Add directory for strong denoiser (solo border method) if requested
         if getattr(args, "add_strong_denoiser", False):
@@ -823,7 +819,6 @@ def run_cohort_normalization_adaptive(
         "original": dirs.get("normalized_original"),
         "unhuddle": dirs.get("normalized_unhuddle"),
         "denoised": dirs.get("normalized_unhuddle_denoised"),
-        "denoised_original_style": dirs.get("normalized_unhuddle_denoised_original_style"),
         "denoised_strong": dirs.get("normalized_unhuddle_denoised_strong"),
     }
 

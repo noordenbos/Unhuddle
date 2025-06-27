@@ -397,8 +397,6 @@ if (Test-Path "demodata" -and Test-Path "README.md") { Write-Host "Cleaning demo
 │   ├── unhuddle_normalized/       # After unhuddle -normalized
 │   ├── unhuddle_denoised_sum/     # After unhuddle -denoised intensity sums (default) 
 │   ├── unhuddle_denoised_normalized/  # After unhuddle -denoised and normalized (default)
-│   ├── unhuddle_denoised_sum_original_style/     # Default denoised compilation (original_sum + reallocated - taken)
-│   ├── unhuddle_denoised_normalized_original_style/  # Default denoised normalized
 │   ├── unhuddle_denoised_sum_strong/     # Strong denoised compilation (if --add_strong_denoiser)
 │   └── unhuddle_denoised_normalized_strong/  # Strong denoised normalized (if --add_strong_denoiser)
 │
@@ -597,7 +595,7 @@ For each FOV (field of view) folder, the following stages are run:
 #### **Denoised Unhuddle Branch (Default, you can toggle of with `--no_denoise`)**
 - **Intensity Source**: `{}_ExclusionMembrane_Mean_Intensity_denoised` columns
 - **Reallocation Weights**: Based on denoised mean intensities (same as canonical branch, but the core measurements are denoised)
-- **Default Sum Compilation (Original Style)**: `original_cell_sum + reallocated_intensity - taken_intensity`
+- **Default Sum Compilation**: `original_cell_sum + reallocated_intensity - taken_intensity`
   - Starts from original whole cell sums
   - Applies denoised reallocation (same as canonical branch pattern)
   - **Result**: No signal loss, less harsh denoising. It includes the full original cell intensity, including the signal in the core that was denoised
@@ -608,7 +606,7 @@ For each FOV (field of view) folder, the following stages are run:
   - **Result**: Lower values in total, because the denoised residuals are used to reconstruct the sum
   - **Expert usage only** - more aggressive denoising
   - Output: 
-  - `/unhuddle_denoised_sum_original_style/{fov}.csv` (default method)
+  - `/unhuddle_denoised_sum/{fov}.csv` (default method)
   - `/unhuddle_denoised_sum_strong/{fov}.csv` (if `--add_strong_denoiser` is used)
 
 ### 5. **Normalization**
@@ -622,7 +620,6 @@ For each FOV (field of view) folder, the following stages are run:
   - `/original_normalized/{fov}.csv`
   - `/unhuddle_normalized/{fov}.csv`
   - `/unhuddle_denoised_normalized/{fov}.csv` (default)
-  - `/unhuddle_denoised_normalized_original_style/{fov}.csv` (default)
   - `/unhuddle_denoised_normalized_strong/{fov}.csv` (if `--add_strong_denoiser` is used)
 
 ![Reallocation-Based Denoising](assets/images/example_normalization.png)  
@@ -745,7 +742,6 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 |-----------------------|-------------------------------------------------------------------------------------------------|
 | `--no_denoise`        | Disable denoising (not recommended). Denoising is enabled by default.                          |
 | `--add_strong_denoiser` | Add strong denoised sum data using solo-border compilation. Expert usage only - creates additional layer in AnnData object. |
-| `--no_original_compiled_sum` | Disable original-style compilation (not recommended). Original-style compilation is the default. |
 | `--normalization_markers` | Required. Markers used for per-cell normalization (e.g., CD45, Vimentin).                 |
 | `--nuclear_markers`   | Required. Markers used for nucleus detection and morphology extraction.                        |
 
@@ -832,7 +828,7 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 |-------------------|-----------------------------------------------------------|
 | `sum_unhuddle`    | Corrected per-cell intensities before normalization       |
 | `sum_original`    | Raw intensities prior to interaction reallocation         |
-| `sum_unhuddle_denoised` | Denoised per-cell intensities using original-style method (default) |
+| `sum_unhuddle_denoised` | Denoised per-cell intensities (default) |
 | `sum_unhuddle_denoised_strong` | Strong denoised compilation using solo border method (if `--add_strong_denoiser` is used) |
 | `normalized_unhuddle` | Normalized unhuddle intensities (same as `adata.X`) |
 | `normalized_original` | Normalized original intensities |
