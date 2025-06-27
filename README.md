@@ -536,7 +536,7 @@ base_path/
 5. Have your own masks? Add `--mask_pattern` --> Glob pattern to find your mask (e.g. `*_mask.tiff`). **NB:** Do not use `*.ome.tiff`.
 6. You do not have your own masks? Try the deepcell webloader function! Make sure to install Firefox and GeckoDriver, add the flags `--create_deepcell_mask` and `--geckodriver_path` (add actual GeckoDriver path).
    5.1. Run the pipeline and check the overlay files. Want to adapt the markers used for the overlay? Use the overrides: `--nuclear-markers_overlay` and `--membrane-markers_overlay`, then rerun.
-7. Experimental: `use_denoise`. Supported denoising strategies are learning the relationship between cell size and noise (`--denoise_method noise cone`) or simply regard lower percentile as noise (`--denoise_method percentile). Inspect the visual QC if this makes sense on your data!
+7. Experimental: `--use_denoise`. Supported denoising strategies are learning the relationship between cell size and noise (`--denoise_method noisecone`) or simply regard lower percentile as noise (`--denoise_method percentile` and specify the `--percentile x` cutoff, where x is an intger value, eg 5). Inspect the visual QC if this makes sense on your data!
 8. Inspect all QC. Are you happy? Run dimension reduction using your favorite algorithm (currently not supported in Unhuddle) and load the coordinates in the pipeline using:
    - `--add_dimension_reduction path/to/your_dr_coords`
    - `--coord_cols yourcolname_1 yourcolname_2`
@@ -585,25 +585,24 @@ For each FOV (field of view) folder, the following stages are run:
 
 #### **Canonical Branch (Default)**
 - **Intensity Source**: `{}_ExclusionMembrane_Mean_Intensity` columns
-- **Reallocation Weights**: Based on original mean intensities
+- **Reallocation Weights**: Based on mean intensities as measured under the cell mask, excluding the border pixels (cell core)
 - **Sum Compilation**: `original_sum + reallocated_intensity - taken_intensity`
 - Output: `/unhuddle_sum/{fov}.csv`
 
 #### **Denoised Branch (Experimental)**
 - **Intensity Source**: `{}_ExclusionMembrane_Mean_Intensity_denoised` columns
-- **Reallocation Weights**: Based on denoised mean intensities (consistent with canonical branch)
-- **Standard Sum Compilation (Solo Border)**: `denoised_residuals + reallocated_intensity + solo_border_pixels`
-  - Starts from denoised exclusion membrane residuals
-  - Adds reallocated intensity from border interactions
-  - Adds solo border pixel intensities
-  - **Result**: Lower values since it only includes denoised exclusion membrane + border pixels
-- **Optional Alternative Compilation (Original Style)**: Use `--add_original_compiled_sum` to also generate `original_cell_sum + reallocated_intensity - taken_intensity`
+- **Reallocation Weights**: Based on denoised mean intensities (same as canonical branch, but the core measurements are denoised)
+- **Standard Sum Compilation (Original Style)**: Use `--add_original_compiled_sum` to also generate `original_cell_sum + reallocated_intensity - taken_intensity`
   - Starts from original whole cell sums
   - Applies denoised reallocation (same as canonical branch pattern)
-  - **Result**: Higher values since it includes the full original cell intensity that was denoised in the exclusion membrane
-  - **Expected**: Should be higher than solo border method due to inclusion of original cell core intensities
-- Output: 
-  - `/unhuddle_denoised_sum/{fov}.csv` (standard solo border method)
+  - **Result**: No signal loss, less harse denoising. It includes the full original cell intensity, including the signal in the core that was denoised
+- **Optional Sum Compilation (Solo Border)**: `denoised_residuals + reallocated_intensity + solo_border_pixels`
+  - Starts from denoised exclusion membrane (core) residuals
+  - Adds reallocated intensity from border interactions
+  - Adds solo border pixel intensities (original signal that was not part of reallocation pipeline) 
+  - **Result**: Lower values in total, because the denoised residuals are used to reconstruct the sum
+  - Output: 
+  - `/unhuddle_denoised_sum/{fov}.csv` (solo border method)
   - `/unhuddle_denoised_sum_original_style/{fov}.csv` (if `--add_original_compiled_sum` is used)
 
 ### 5. **Normalization**
