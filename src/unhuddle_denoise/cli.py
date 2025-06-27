@@ -76,7 +76,7 @@ def main():
         raise ValueError("Cannot use both --fitsne and --add_dimensionreduction_coords. Choose one.")
 
     if args.use_denoised:
-        logger.info("⚙️ Denoiser enabled — cohort-level ExclMem_Sum data will be fetched before FOV loop.")
+        logger.info("⚙️ Denoiser enabled — cohort-level denoising will be applied using the noisecone method.")
 
     # Setup paths and input FOVs
     dirs = setup_output_directories(args.output_base_path, args)
@@ -129,7 +129,7 @@ def main():
     if args.use_denoised:
         logger.info(f"📊 Computing denoised reallocation factors (cohort-wide), following method: {args.denoise_method}")
         denoise_pipeline(args, dirs)
-        logger.info("✅ Simple percentile denoising complete. QC & outputs in %s", dirs['QC_metadata_denoised'])
+        logger.info("✅ Denoising complete. QC & outputs in %s", dirs['QC_metadata_denoised'])
 
     # Stage 2b: Reallocation
     results_stage2 = run_parallel_stage(
@@ -168,6 +168,8 @@ def main():
         sum_dirs['denoised'] = dirs['unhuddle_denoised_sum']
     if dirs.get('unhuddle_denoised_sum_original_style'):
         sum_dirs['denoised_original_style'] = dirs['unhuddle_denoised_sum_original_style']
+    if dirs.get('unhuddle_denoised_sum_strong'):
+        sum_dirs['denoised_strong'] = dirs['unhuddle_denoised_sum_strong']
 
     run_cohort_normalization_adaptive(
         fov_folders=fov_folders,

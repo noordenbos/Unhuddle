@@ -221,8 +221,10 @@ def parse_arguments() -> argparse.Namespace:
         default=10,
         help="Objective magnification to select in DeepCell UI (e.g., 10, 20, 40)"
     )
-    parser.add_argument("--use_denoised", dest="use_denoised", action="store_true",
-                        help="Experimental, uses cohort level data to denoise reallocation factors")
+    parser.add_argument("--use_denoised", dest="use_denoised", action="store_true", default=True,
+                        help="Uses cohort level data to denoise reallocation factors (enabled by default)")
+    parser.add_argument("--no_denoise", dest="use_denoised", action="store_false",
+                        help="Disable denoising (not recommended)")
     parser.add_argument("--use_denoise", dest="use_denoised", action="store_true",
                         help=argparse.SUPPRESS)
     parser.add_argument("--fitsne", action="store_true",
@@ -269,7 +271,7 @@ def parse_arguments() -> argparse.Namespace:
         "--denoise_method",
         choices=["percentile", "noisecone"],
         default="noisecone",
-        help="Denoise on general lower percentile per size bin (percentile) or regression on large noisy cells (noisecone). Default: percentile"
+        help="Denoise on general lower percentile per size bin (percentile, expert usage only) or regression on large noisy cells (noisecone, recommended). Default: noisecone"
     )
     parser.add_argument(
         "--denoise_x_anchor_multiplier",
@@ -321,8 +323,19 @@ def parse_arguments() -> argparse.Namespace:
     )
     parser.add_argument(
         "--add_original_compiled_sum",
-        action="store_true",
-        help="Add extra denoised sum data using original-style compilation (original_sum + reallocated - taken) in addition to the standard solo-border method. This creates an additional layer in the AnnData object."
+        action="store_true", default=True,
+        help="Use original-style compilation (original_sum + reallocated - taken) as the default denoised method. This creates the standard layer in the AnnData object."
+    )
+    parser.add_argument(
+        "--no_original_compiled_sum",
+        dest="add_original_compiled_sum",
+        action="store_false",
+        help="Disable original-style compilation (not recommended)"
+    )
+    parser.add_argument(
+        "--add_strong_denoiser",
+        action="store_true", default=False,
+        help="Add strong denoised sum data using solo-border compilation (denoised_residuals + reallocated + solo_border_pixels). Expert usage only - creates additional layer in AnnData object."
     )
 
     return parser.parse_args()
@@ -458,10 +471,15 @@ def setup_output_directories(output_base: str, args) -> dict:
         dirs["normalized_unhuddle_denoised"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized")
         dirs["QC_metadata_denoised"] = os.path.join(output_base, "QC", "denoiser")
         
-        # Add directory for original-style compilation if the flag is used
-        if getattr(args, "add_original_compiled_sum", False):
+        # Add directory for original-style compilation (now default)
+        if getattr(args, "add_original_compiled_sum", True):
             dirs["unhuddle_denoised_sum_original_style"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum_original_style")
             dirs["normalized_unhuddle_denoised_original_style"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized_original_style")
+        
+        # Add directory for strong denoiser (solo border method) if requested
+        if getattr(args, "add_strong_denoiser", False):
+            dirs["unhuddle_denoised_sum_strong"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_sum_strong")
+            dirs["normalized_unhuddle_denoised_strong"] = os.path.join(output_base, "processed_data", "unhuddle_denoised_normalized_strong")
 
     if getattr(args, "save_reallocation_debug", False):
         dirs["QC_reallocation"] = os.path.join(dirs["QC"], "reallocation")
@@ -603,7 +621,7 @@ def build_reallocation_args(fov: str, dirs: dict, args: argparse.Namespace):
         args.use_denoised,
         args.log_level,
         args.save_reallocation_debug,
-        getattr(args, "add_original_compiled_sum", False),
+        getattr(args, "add_strong_denoiser", False),
     )
 
 
@@ -806,6 +824,7 @@ def run_cohort_normalization_adaptive(
         "unhuddle": dirs.get("normalized_unhuddle"),
         "denoised": dirs.get("normalized_unhuddle_denoised"),
         "denoised_original_style": dirs.get("normalized_unhuddle_denoised_original_style"),
+        "denoised_strong": dirs.get("normalized_unhuddle_denoised_strong"),
     }
 
     # Process each branch

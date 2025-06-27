@@ -132,7 +132,7 @@ def process_fov_reallocation_only(
     use_denoised,
     log_level,
     save_reallocation_debug=False,
-    add_original_compiled_sum=False
+    add_strong_denoiser=False
 ):
     from unhuddle_denoise.cli_helpers import setup_logging
     setup_logging(log_level)
@@ -188,36 +188,42 @@ def process_fov_reallocation_only(
                     all_interactions, protein_features, tol=1e-6
                 )
                 
-                # Always run solo-border method (standard)
-                logger.info(f"🔁 Running standard solo-border method for denoised sum compilation")
-                # Get solo border pixel data
-                markers = [c.replace("_ExclusionMembrane_Sum_Intensity_denoised", "") for c in denoised_cols]
-                solo_border_intensity = compute_solo_border_pixels(cell_mask, membrane_mask, fov_path, markers)
-                
-                denoised_df = settle_debts_from_residuals(
+                # Default: Run original-style compilation (original_sum + reallocated - taken)
+                logger.info(f"🔁 Running default original-style denoised sum compilation")
+                original_style_df = settle_debts_from_residuals_original_style(
                     fov_folder=fov_path,
                     reallocation=reallocation_denoised,
                     protein_features=protein_features,
-                    cell_mask=cell_mask,
-                    membrane_mask=membrane_mask,
-                    sensor_markers=markers_for_normalization,
                     dirs=dirs
                 )
+                # Save to the default directory for original-style compilation
+                fov_name = os.path.basename(fov_path)
+                original_style_path = os.path.join(dirs["unhuddle_denoised_sum_original_style"], f"{fov_name}.csv")
+                original_style_df.to_csv(original_style_path, index=False)
+                logger.info(f"📝 Saved default original-style denoised sum to {original_style_path}")
                 
-                # Optionally add original-style compilation as extra data
-                if add_original_compiled_sum:
-                    logger.info(f"🔁 Adding extra original-style denoised sum compilation")
-                    original_style_df = settle_debts_from_residuals_original_style(
+                # Optional: Add strong denoiser (solo-border method) as extra data
+                if add_strong_denoiser:
+                    logger.info(f"🔁 Adding strong denoiser (solo-border method) for expert usage")
+                    # Get solo border pixel data
+                    markers = [c.replace("_ExclusionMembrane_Sum_Intensity_denoised", "") for c in denoised_cols]
+                    solo_border_intensity = compute_solo_border_pixels(cell_mask, membrane_mask, fov_path, markers)
+                    
+                    strong_denoised_df = settle_debts_from_residuals(
                         fov_folder=fov_path,
                         reallocation=reallocation_denoised,
                         protein_features=protein_features,
+                        cell_mask=cell_mask,
+                        membrane_mask=membrane_mask,
+                        sensor_markers=markers_for_normalization,
                         dirs=dirs
                     )
-                    # Save to the separate directory for original-style compilation
-                    fov_name = os.path.basename(fov_path)
-                    original_style_path = os.path.join(dirs["unhuddle_denoised_sum_original_style"], f"{fov_name}.csv")
-                    original_style_df.to_csv(original_style_path, index=False)
-                    logger.info(f"📝 Saved extra original-style denoised sum to {original_style_path}")
+                    # Save to the strong denoiser directory
+                    strong_path = os.path.join(dirs["unhuddle_denoised_sum_strong"], f"{fov_name}.csv")
+                    strong_denoised_df.to_csv(strong_path, index=False)
+                    logger.info(f"📝 Saved strong denoiser (solo-border) sum to {strong_path}")
+                else:
+                    solo_border_intensity = None
                 
                 result["intensity_settled_denoised"] = True
         else:

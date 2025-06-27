@@ -19,7 +19,6 @@ base_cmd = [
     "--denoise_regress", "perimeter",
     "--normalization", "sensormarker",
     "--save_reallocation_debug",
-    "--add_original_compiled_sum",
 ]
 
 # Build all jobs

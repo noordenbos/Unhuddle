@@ -14,7 +14,7 @@ On the cell to cell borderpixels, shared signal is observed due to
 2. lateral bleed/signal spill
 3. z-projection.  <br>
 
-Unhuddle knows the cell's neighbors, measures their claim to borderpixelintensity and reallocates the bordersignal to the rightful owner. Unhuddle is equiped with an optional percentile denoiser that works on the core of the cell mask, that may be  effective on your dataset. 
+Unhuddle knows the cell's neighbors, measures their claim to borderpixelintensity and reallocates the bordersignal to the rightful owner. Unhuddle includes cohort-level denoising that works on the core of the cell mask, which is effective on most datasets. 
 
 Unhuddle values are normalized by total protein content per cell, but if cell size (surface area or perimeter) is preferred that can be set. Advanced users can choose for normalization against housekeeper protein expression. Additionally this method defends against regions with variation in overall expression, as is frequently seen in antibody based stainings.
 
@@ -354,14 +354,13 @@ if (Test-Path "demodata" -and Test-Path "README.md") { Write-Host "Cleaning demo
 
 
 ### Test the extensions on the demodata
-- If you've downloaded the additional demodata add these lines to the call (see step 5). NB output will now be in `results_extended`.  
+- If you've downloaded the additional demodata add these lines to the call (see step 5), nb extended demodata not needed:  
 (tip: compile call in a texteditor and make sure all your lines -but the last- have a continuation indicator: `\`, for windows change to ` )
 
 [← Check the command in Step 5](#-5-run-the-pipeline-on-included-demo-data)
 
 ```bash
 --output_base_path results_extended \
---use_denoise \
 --add_dimensionreduction_coords demodata-tsne \
 --coord_cols optsne_1 optsne_2
 ```
@@ -393,10 +392,12 @@ if (Test-Path "demodata" -and Test-Path "README.md") { Write-Host "Cleaning demo
 │   │   └── original_normalized/   # Before unhuddle -normalized
 │   ├── unhuddle_sum/              # After unhuddle -intensity sums
 │   ├── unhuddle_normalized/       # After unhuddle -normalized
-│   ├── unhuddle_denoised_sum/     # After unhuddle -denoised intensity sums (if --use_denoise) 
-│   ├── unhuddle_denoised_normalized/  # After unhuddle -denoised and normalized (if --use_denoise)
-│   ├── unhuddle_denoised_sum_original_style/     # Alternative denoised compilation (if --add_original_compiled_sum)
-│   └── unhuddle_denoised_normalized_original_style/  # Alternative denoised normalized (if --add_original_compiled_sum)
+│   ├── unhuddle_denoised_sum/     # After unhuddle -denoised intensity sums (default) 
+│   ├── unhuddle_denoised_normalized/  # After unhuddle -denoised and normalized (default)
+│   ├── unhuddle_denoised_sum_original_style/     # Default denoised compilation (original_sum + reallocated - taken)
+│   ├── unhuddle_denoised_normalized_original_style/  # Default denoised normalized
+│   ├── unhuddle_denoised_sum_strong/     # Strong denoised compilation (if --add_strong_denoiser)
+│   └── unhuddle_denoised_normalized_strong/  # Strong denoised normalized (if --add_strong_denoiser)
 │
 ├── features/
 │   ├── morphology_features/       # Per-cell morphology metrics
@@ -589,21 +590,22 @@ For each FOV (field of view) folder, the following stages are run:
 - **Sum Compilation**: `original_sum + reallocated_intensity - taken_intensity`
 - Output: `/unhuddle_sum/{fov}.csv`
 
-#### **Denoised Branch (Experimental)**
+#### **Denoised Branch (Default)**
 - **Intensity Source**: `{}_ExclusionMembrane_Mean_Intensity_denoised` columns
 - **Reallocation Weights**: Based on denoised mean intensities (same as canonical branch, but the core measurements are denoised)
-- **Standard Sum Compilation (Original Style)**: Use `--add_original_compiled_sum` to also generate `original_cell_sum + reallocated_intensity - taken_intensity`
+- **Default Sum Compilation (Original Style)**: `original_cell_sum + reallocated_intensity - taken_intensity`
   - Starts from original whole cell sums
   - Applies denoised reallocation (same as canonical branch pattern)
-  - **Result**: No signal loss, less harse denoising. It includes the full original cell intensity, including the signal in the core that was denoised
-- **Optional Sum Compilation (Solo Border)**: `denoised_residuals + reallocated_intensity + solo_border_pixels`
+  - **Result**: No signal loss, less harsh denoising. It includes the full original cell intensity, including the signal in the core that was denoised
+- **Optional Sum Compilation (Strong Denoising)**: Use `--add_strong_denoiser` to generate `denoised_residuals + reallocated_intensity + solo_border_pixels`
   - Starts from denoised exclusion membrane (core) residuals
   - Adds reallocated intensity from border interactions
   - Adds solo border pixel intensities (original signal that was not part of reallocation pipeline) 
   - **Result**: Lower values in total, because the denoised residuals are used to reconstruct the sum
+  - **Expert usage only** - more aggressive denoising
   - Output: 
-  - `/unhuddle_denoised_sum/{fov}.csv` (solo border method)
-  - `/unhuddle_denoised_sum_original_style/{fov}.csv` (if `--add_original_compiled_sum` is used)
+  - `/unhuddle_denoised_sum_original_style/{fov}.csv` (default method)
+  - `/unhuddle_denoised_sum_strong/{fov}.csv` (if `--add_strong_denoiser` is used)
 
 ### 5. **Normalization**
 - Apply normalization using total protein expression per cell (allow only phenotype_markers to contribute):
@@ -612,12 +614,13 @@ For each FOV (field of view) folder, the following stages are run:
 - Scale the values back to 0-1 range using full cohort data:
   - If a marker has enough dynamic range; apply robust scaling to [0.1, 99.9] percentile range
   - Falls back to binarisation when insufficient dynamic range, reports in QC
-- Denoised reallocation intensities are used if `--use_denoised` is active.
+- Denoised reallocation intensities are used by default.
 - Output:
   - `/unhuddle_normalized/{fov}.csv`
   - `/original_normalized/{fov}.csv`
-  - `/unhuddle_denoised_normalized/{fov}.csv` (if `--use_denoise` is active)
-  - `/unhuddle_denoised_normalized_original_style/{fov}.csv` (if both `--use_denoise` and `--add_original_compiled_sum` are active)
+  - `/unhuddle_denoised_normalized/{fov}.csv` (default)
+  - `/unhuddle_denoised_normalized_original_style/{fov}.csv` (default)
+  - `/unhuddle_denoised_normalized_strong/{fov}.csv` (if `--add_strong_denoiser` is used)
 
 ![Reallocation-Based Denoising](assets/images/example_normalization.png)  
 
@@ -737,8 +740,9 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 
 | Argument              | Description                                                                                     |
 |-----------------------|-------------------------------------------------------------------------------------------------|
-| `--use_denoised`      | Enables **cohort-level denoising** of marker intensities using signal vs. noise cone modeling. |
-| `--add_original_compiled_sum` | Add extra denoised sum data using original-style compilation (original_sum + reallocated - taken) in addition to the standard solo-border method. This creates an additional layer in the AnnData object. |
+| `--no_denoise`        | Disable denoising (not recommended). Denoising is enabled by default.                          |
+| `--add_strong_denoiser` | Add strong denoised sum data using solo-border compilation. Expert usage only - creates additional layer in AnnData object. |
+| `--no_original_compiled_sum` | Disable original-style compilation (not recommended). Original-style compilation is the default. |
 | `--normalization_markers` | Required. Markers used for per-cell normalization (e.g., CD45, Vimentin).                 |
 | `--nuclear_markers`   | Required. Markers used for nucleus detection and morphology extraction.                        |
 
@@ -825,12 +829,12 @@ This example jupyter notebook snippet provides a simple per-unit-area normalizat
 |-------------------|-----------------------------------------------------------|
 | `sum_unhuddle`    | Corrected per-cell intensities before normalization       |
 | `sum_original`    | Raw intensities prior to interaction reallocation         |
-| `sum_unhuddle_denoised` | Denoised per-cell intensities using solo border method (if `--use_denoise` is used) |
-| `sum_unhuddle_denoised_original_style` | Alternative denoised compilation using original cell sums + reallocation (if `--add_original_compiled_sum` is used) |
+| `sum_unhuddle_denoised` | Denoised per-cell intensities using original-style method (default) |
+| `sum_unhuddle_denoised_strong` | Strong denoised compilation using solo border method (if `--add_strong_denoiser` is used) |
 | `normalized_unhuddle` | Normalized unhuddle intensities (same as `adata.X`) |
 | `normalized_original` | Normalized original intensities |
-| `normalized_unhuddle_denoised` | Normalized denoised intensities (if `--use_denoise` is used) |
-| `normalized_unhuddle_denoised_original_style` | Normalized original-style denoised intensities (if both `--use_denoise` and `--add_original_compiled_sum` are used) |
+| `normalized_unhuddle_denoised` | Normalized denoised intensities (default) |
+| `normalized_unhuddle_denoised_strong` | Normalized strong denoised intensities (if `--add_strong_denoiser` is used) |
 
 ---
 
