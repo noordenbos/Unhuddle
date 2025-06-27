@@ -9,3 +9,7 @@ demodata/**
 !demodata/**/*.ome.tiff
 !demodata/**/cell_mask.tiff
 temp/
+
+# Virtual environments
+.venv/
+.venv_penguin/

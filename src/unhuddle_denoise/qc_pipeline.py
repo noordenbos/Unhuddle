@@ -10,6 +10,7 @@ from skimage.transform import resize
 from tqdm import tqdm
 from scipy.spatial import cKDTree
 import logging
+import shutil
 
 
 logger = logging.getLogger(__name__)
@@ -54,6 +55,9 @@ def perform_density_filtering(
     fovs = sorted(adata.obs['fov'].unique())
     region_map = {}
 
+    # Create density scale legend
+    create_density_scale_legend(density_dir, density_scale, density_threshold)
+
     for fov in tqdm(fovs, desc="🔍 Density QC", unit="FOV"):
         seg = adata.uns.get('spatial', {}).get(fov, {}).get('segmentation')
         if seg is None:
@@ -61,11 +65,20 @@ def perform_density_filtering(
             continue
         filtered = [c for c in low if c.startswith(f"{fov}_")]
         dm = compute_density_map(seg, filtered, window_size, stride)
-        # save
-        plt.figure(figsize=(6, 6))
-        plt.imshow(dm, cmap='hot', vmin=density_scale[0], vmax=density_scale[1])
-        plt.axis('off')
-        plt.savefig(os.path.join(density_dir, f"{fov}.png"), dpi=200, bbox_inches='tight')
+        
+        # Create figure for density map
+        fig, ax = plt.subplots(figsize=(6, 6))
+        im = ax.imshow(dm, cmap='hot', vmin=density_scale[0], vmax=density_scale[1])
+        ax.axis('off')
+        
+        # Save as PNG
+        png_path = os.path.join(density_dir, f"{fov}.png")
+        plt.savefig(png_path, dpi=200, bbox_inches='tight', format='png')
+        
+        # Save as SVG
+        svg_path = os.path.join(density_dir, f"{fov}.svg")
+        plt.savefig(svg_path, bbox_inches='tight', format='svg')
+        
         plt.close()
         # determine region cells
         m = dm > density_threshold
@@ -148,6 +161,9 @@ def generate_segmentation_images(adata, fovs, region_map,dirs):
     seg_dir = dirs["QC_segmentation"]
     os.makedirs(seg_dir, exist_ok=True)
 
+    # Create segmentation filter legend
+    create_segmentation_filter_legend(seg_dir)
+
     for fov in tqdm(fovs, desc="🎨 Segmentation QC", unit="FOV"):
         seg = adata.uns.get('spatial', {}).get(fov, {}).get('segmentation')
         if seg is None:
@@ -165,15 +181,25 @@ def generate_segmentation_images(adata, fovs, region_map,dirs):
                     continue
                 key = f"{fov}_{lab}"
                 if key in low:
-                    img[y, x] = (255, 0, 0)
+                    img[y, x] = (255, 0, 0)  # Red
                 elif key in reg:
-                    img[y, x] = (0, 255, 0)
+                    img[y, x] = (0, 255, 0)  # Green
                 elif key in drf:
-                    img[y, x] = (255, 255, 0)
+                    img[y, x] = (255, 255, 0)  # Yellow
                 else:
-                    img[y, x] = (210, 210, 210)
+                    img[y, x] = (210, 210, 210)  # Light gray
 
-        plt.imsave(os.path.join(seg_dir, f"{fov}.png"), img)
+        # Save as PNG
+        png_path = os.path.join(seg_dir, f"{fov}.png")
+        plt.imsave(png_path, img)
+        
+        # Save as SVG (convert to matplotlib figure for SVG)
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.imshow(img)
+        ax.axis('off')
+        svg_path = os.path.join(seg_dir, f"{fov}.svg")
+        plt.savefig(svg_path, bbox_inches='tight', format='svg')
+        plt.close()
 
     logger.info("Segmentation overlays done")
 
@@ -231,6 +257,26 @@ def generate_storyboards(dirs, fovs):
     if dens_paths:
         create_storyboard(dens_paths, dens_out)
 
+    # Copy legend files to storyboard folder for user convenience
+    
+    # Copy density scale legend
+    density_legend_png = os.path.join(dens_dir, "density_scale_legend.png")
+    density_legend_svg = os.path.join(dens_dir, "density_scale_legend.svg")
+    if os.path.exists(density_legend_png):
+        shutil.copy2(density_legend_png, os.path.join(sb_dir, "density_scale_legend.png"))
+    if os.path.exists(density_legend_svg):
+        shutil.copy2(density_legend_svg, os.path.join(sb_dir, "density_scale_legend.svg"))
+    
+    # Copy segmentation filter legend
+    seg_legend_png = os.path.join(seg_dir, "segmentation_filter_legend.png")
+    seg_legend_svg = os.path.join(seg_dir, "segmentation_filter_legend.svg")
+    if os.path.exists(seg_legend_png):
+        shutil.copy2(seg_legend_png, os.path.join(sb_dir, "segmentation_filter_legend.png"))
+    if os.path.exists(seg_legend_svg):
+        shutil.copy2(seg_legend_svg, os.path.join(sb_dir, "segmentation_filter_legend.svg"))
+    
+    logger.info("✅ Legend files copied to storyboard folder for user convenience")
+
 
 def generate_dr_plot(adata, dirs):
     """
@@ -287,10 +333,16 @@ def generate_dr_plot(adata, dirs):
         title_fontsize='small'
     )
 
-    out_path = os.path.join(dirs["QC_filtering"], 'dr_qc.png')
-    plt.savefig(out_path, dpi=200, bbox_inches='tight')
+    # Save as PNG
+    out_path_png = os.path.join(dirs["QC_filtering"], '3_dr_qc.png')
+    plt.savefig(out_path_png, dpi=200, bbox_inches='tight', format='png')
+    
+    # Save as SVG
+    out_path_svg = os.path.join(dirs["QC_filtering"], '3_dr_qc.svg')
+    plt.savefig(out_path_svg, bbox_inches='tight', format='svg')
+    
     plt.close()
-    logger.info(f"🖼️ DR QC plot saved to: {out_path}")
+    logger.info(f"🖼️ DR QC plot saved to: {out_path_png}, {out_path_svg}")
 
 
 def generate_summary_tables(adata, dirs):
@@ -325,7 +377,7 @@ def generate_summary_tables(adata, dirs):
         for name, val in steps
     ]
 
-    overall_path = os.path.join(dirs["QC_filtering"], 'overall_stats.csv')
+    overall_path = os.path.join(dirs["QC_filtering"], '5_overall_stats.csv')
     pd.DataFrame(rows).to_csv(overall_path, index=False)
     logger.info(f"📄 Wrote overall filtering stats to: {overall_path}")
 
@@ -342,7 +394,7 @@ def generate_summary_tables(adata, dirs):
             row[name] = (sub == val).sum() if val else len(sub)
         fov_rows.append(row)
 
-    per_fov_path = os.path.join(dirs["QC_filtering"], 'per_fov_stats.csv')
+    per_fov_path = os.path.join(dirs["QC_filtering"], '6_per_fov_stats.csv')
     pd.DataFrame(fov_rows).to_csv(per_fov_path, index=False)
     logger.info(f"📄 Wrote per-FOV filtering stats to: {per_fov_path}")
 
@@ -394,8 +446,15 @@ def plot_intensity_distribution(adata, dirs, low_intensity_threshold):
     axes[1].set_title("Summed Intensity (Full Range)")
 
     plt.tight_layout()
-    out_path = os.path.join(dirs["QC_filtering"], "total_intensity_distribution.png")
-    plt.savefig(out_path, dpi=150)
+    
+    # Save as PNG
+    out_path_png = os.path.join(dirs["QC_filtering"], "1_total_intensity_distribution.png")
+    plt.savefig(out_path_png, dpi=150, format='png')
+    
+    # Save as SVG
+    out_path_svg = os.path.join(dirs["QC_filtering"], "1_total_intensity_distribution.svg")
+    plt.savefig(out_path_svg, format='svg')
+    
     plt.close()
 
 def log_column_stats(matrix: np.ndarray, var_names: list, logger):
@@ -581,8 +640,8 @@ def extend_dirs_with_qc(dirs):
 
     dirs["QC_filtering"] = os.path.join(dirs["QC"], "filtering")
     os.makedirs(dirs["QC_filtering"], exist_ok=True)
-    dirs["QC_density"] = os.path.join(dirs["QC"], "filtering","density_maps")
-    dirs["QC_segmentation"] = os.path.join(dirs["QC"], "filtering","segmentation")
+    dirs["QC_density"] = os.path.join(dirs["QC"], "filtering","2_density_maps")
+    dirs["QC_segmentation"] = os.path.join(dirs["QC"], "filtering","4_spatial_filter")
     dirs["QC_storyboards"] = os.path.join(dirs["QC"], "filtering","storyboards")
     for key in ["QC_density", "QC_segmentation", "QC_storyboards"]:
         os.makedirs(dirs[key], exist_ok=True)
@@ -679,6 +738,112 @@ def run_qc_from_memory(args, adata, dirs):
     # ── 10. Final Print Summary ───────────────────────────────────────────────────
     del adata
     #print_success_guide(dirs)
+
+
+def create_density_scale_legend(density_dir, density_scale=(0, 800), density_threshold=550):
+    """
+    Create a density scale legend showing the color mapping and threshold.
+    
+    Args:
+        density_dir (str): Directory to save the legend files
+        density_scale (tuple): (min, max) values for the density scale
+        density_threshold (float): Threshold value for filtering
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+    
+    # Create figure with just the colorbar
+    fig, ax = plt.subplots(figsize=(2, 6))
+    
+    # Create a gradient for the colorbar
+    gradient = np.linspace(density_scale[0], density_scale[1], 256).reshape(-1, 1)
+    
+    # Display the gradient as an image
+    im = ax.imshow(gradient, cmap='hot', aspect='auto', 
+                   extent=[0, 1, density_scale[0], density_scale[1]])
+    
+    # Add colorbar
+    cbar = plt.colorbar(im, ax=ax, orientation='vertical', shrink=0.8)
+    cbar.set_label('Density (cells per window)', fontsize=10)
+    
+    # Add threshold line
+    if density_threshold > density_scale[0] and density_threshold < density_scale[1]:
+        ax.axhline(y=density_threshold, color='white', linestyle='--', linewidth=2, 
+                  label=f'Threshold ({density_threshold})')
+        ax.legend(loc='upper right', fontsize=8)
+    
+    # Set title and labels
+    ax.set_title('Density Scale', fontsize=12, pad=20)
+    ax.set_xlabel('')
+    ax.set_ylabel('Density Value', fontsize=10)
+    
+    # Remove x-axis ticks
+    ax.set_xticks([])
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save as PNG
+    png_path = os.path.join(density_dir, "density_scale_legend.png")
+    plt.savefig(png_path, dpi=300, bbox_inches='tight', format='png')
+    
+    # Save as SVG
+    svg_path = os.path.join(density_dir, "density_scale_legend.svg")
+    plt.savefig(svg_path, bbox_inches='tight', format='svg')
+    
+    plt.close()
+    
+    logger.info(f"✅ Density scale legend saved: {png_path}, {svg_path}")
+
+
+def create_segmentation_filter_legend(seg_dir):
+    """
+    Create a segmentation filter legend showing which colors correspond to which filter types.
+    
+    Args:
+        seg_dir (str): Directory to save the legend files
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+    
+    # Define colors and labels
+    colors = {
+        'Low Intensity Cell': (255, 0, 0),      # Red
+        'Low Quality Region': (0, 255, 0),      # Green  
+        'Bad DR Cluster': (255, 255, 0),        # Yellow
+        'Unfiltered': (210, 210, 210)           # Light gray
+    }
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(4, 3))
+    
+    # Create legend patches
+    legend_elements = []
+    for label, color in colors.items():
+        # Convert RGB to matplotlib format (0-1 range)
+        color_norm = tuple(c/255 for c in color)
+        patch = patches.Patch(color=color_norm, label=label)
+        legend_elements.append(patch)
+    
+    # Add legend
+    ax.legend(handles=legend_elements, loc='center', fontsize=10)
+    ax.set_title('Segmentation Filter Legend', fontsize=12, pad=20)
+    ax.axis('off')
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save as PNG
+    png_path = os.path.join(seg_dir, "segmentation_filter_legend.png")
+    plt.savefig(png_path, dpi=300, bbox_inches='tight', format='png')
+    
+    # Save as SVG
+    svg_path = os.path.join(seg_dir, "segmentation_filter_legend.svg")
+    plt.savefig(svg_path, bbox_inches='tight', format='svg')
+    
+    plt.close()
+    
+    logger.info(f"✅ Segmentation filter legend saved: {png_path}, {svg_path}")
 
 
 

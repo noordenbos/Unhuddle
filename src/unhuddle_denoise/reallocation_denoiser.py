@@ -83,7 +83,9 @@ def save_signal_noise_qc_from_df(
         # Plot noise line
         xs = np.linspace(area.min(), area.max(), 200)
         ys_noise = np.where(xs > anchor_x, noise_slope * (xs - anchor_x) + anchor_y, 0)
-        fit_ax.plot(xs, ys_noise, color='green', lw=2, label="Noise fit")
+        sd_multiplier = meta.get("sd_multiplier", 3.0)  # Default to 3.0 if not in metadata
+        sd_int = int(sd_multiplier)  # Convert to integer for display
+        fit_ax.plot(xs, ys_noise, color='green', lw=2, label=f"Noise fit (-{sd_int}SD anchor)")
 
         # Fit and plot signal line
         x_signal = area[signal_mask]
@@ -222,6 +224,7 @@ def run_denoising_pipeline_on_dataframe(
                 "anchor_y": anchor_y,
                 "noise_q": noise_q,
                 "x_anchor_multiplier": x_anchor_multiplier,
+                "sd_multiplier": sd_multiplier,
             }
             continue
 
@@ -271,6 +274,7 @@ def run_denoising_pipeline_on_dataframe(
             "anchor_y": anchor_y,
             "noise_q": noise_q,
             "x_anchor_multiplier": x_anchor_multiplier,
+            "sd_multiplier": sd_multiplier,
         }
 
     return {"denoised_df": denoised_df, "metadata": metadata}
