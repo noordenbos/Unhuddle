@@ -68,7 +68,7 @@ def perform_density_filtering(
         
         # Create figure for density map
         fig, ax = plt.subplots(figsize=(6, 6))
-        im = ax.imshow(dm, cmap='hot_r', vmin=density_scale[0], vmax=density_scale[1])
+        im = ax.imshow(dm, cmap='hot', vmin=density_scale[0], vmax=density_scale[1])
         ax.axis('off')
         
         # Save as PNG
