@@ -37,6 +37,7 @@ Once preprocessed, Unhuddle seamlessly integrates morphometrics, reallocation mo
 - [Run the pipeline](#-5-run-the-pipeline-on-included-demo-data)
 - [Run pipeline on your own data](#-ready-for-your-own-data)
 - [Extra information on the pipeline modules](#%EF%B8%8F-pipeline-overview)
+- [Benchmark Analysis & Delta Bars Charts](#-benchmark-analysis--delta-bars-charts)
 - [FAQ](#-faq-for-new-users)  
 - [PENGUIN streamlit app](#streamlit-anchor)
 - [Download additional data](#download-data)
@@ -120,6 +121,30 @@ conda install pip
 pip install -e .
 ```
 This installs unhuddle as a CLI tool available from anywhere in your terminal.
+
+### Conda environment for phenotype classifier (avoids NumPy 2 ABI issues)
+If you hit errors like "_ARRAY_API not found" or "numpy.core.multiarray failed to import" when running the phenotype classifier, create and use a conda environment pinned to NumPy 1.x:
+
+```bash
+conda create -n pytorch_env python=3.12 -y
+conda activate pytorch_env
+conda install -c conda-forge \
+  numpy=1.26 \
+  pandas=2.2 \
+  scikit-learn=1.5 \
+  pyarrow \
+  numexpr \
+  bottleneck -y
+
+# verify
+python -c "import numpy, pandas, sklearn; print(numpy.__version__, pandas.__version__, sklearn.__version__)"
+```
+
+Then run the phenotype CLI using this environment:
+```bash
+python phenotype_cli.py predict --cell 10938 \
+  --layers normalized_original normalized_unhuddle normalized_unhuddle_denoised_original_style
+```
 
 ## ✅ 4. Verify Installation
 ```bash
@@ -1098,6 +1123,35 @@ Remove-Item -Recurse -Force demodata-raw -ErrorAction Ignore; New-Item -ItemType
 </details>
 
 
+
+## 🔬 Benchmark Analysis & Delta Bars Charts
+
+UNHUDDLE includes a powerful benchmark API for analyzing protein intensity changes and generating publication-ready figures. The API provides automated generation of:
+
+- **Single Cell Delta Bars**: Visualize protein intensity changes for individual cells
+- **Storyboard Figures**: Multi-panel visualizations of tissue regions
+- **Batch Processing**: Analyze multiple cells efficiently
+
+### 🚫 Automatic CD19 Filtering
+
+The delta bars analysis automatically excludes **CD19** due to failed staining, ensuring clean and reliable results. This filter can be customized to exclude other problematic markers as needed.
+
+### 📋 Quick Start
+
+```bash
+# Generate delta bars for a specific cell (CD19 automatically excluded)
+python unhuddle_benchmark_api/cli.py single-cell --cell-label 10938 --fov Tonsil394_1
+
+# Custom marker exclusion
+python unhuddle_benchmark_api/cli.py single-cell --cell-label 10938 --fov Tonsil394_1 --exclude-markers CD19 CD20
+
+# Generate both storyboard and delta bars
+python unhuddle_benchmark_api/cli.py both --cell-label 10938 --fov Tonsil394_1
+```
+
+For detailed documentation, see the [Benchmark API README](unhuddle_benchmark_api/README.md).
+
+---
 
 ## 📊 Coming Soon
 UNHUDDLE will be installable via `pip install unhuddle`
