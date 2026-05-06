@@ -6,7 +6,7 @@ import numpy as np
 from skimage import io, measure, morphology
 from skimage.segmentation import find_boundaries
 from scipy.ndimage import binary_fill_holes
-from unhuddle.utils import save_image, generate_pseudocolor_mask
+from unhuddle_denoise.utils import save_image, generate_pseudocolor_mask
 import logging
 logger = logging.getLogger(__name__)
 

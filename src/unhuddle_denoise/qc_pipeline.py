@@ -1,0 +1,846 @@
+import os
+import numpy as np
+import pandas as pd
+import logging
+import matplotlib.pyplot as plt
+from sklearn.linear_model import LinearRegression
+from collections import defaultdict
+from PIL import Image
+from skimage.transform import resize
+from tqdm import tqdm
+from scipy.spatial import cKDTree
+import logging
+import shutil
+
+
+logger = logging.getLogger(__name__)
+
+
+
+
+def compute_density_map(mask, cells, window_size, stride):
+    h, w = mask.shape
+    dm = np.zeros((h, w), float)
+    ids = set(int(c.split('_')[-1]) for c in cells)
+    if not ids.intersection(np.unique(mask)):
+        return dm
+    for y in range(0, h - window_size + 1, stride):
+        for x in range(0, w - window_size + 1, stride):
+            block = mask[y:y+window_size, x:x+window_size]
+            cnt = len(set(np.unique(block)).intersection(ids))
+            if cnt:
+                dm[y:y+window_size, x:x+window_size] += cnt
+    return dm
+
+
+def perform_density_filtering(
+    adata,
+    dirs,
+    window_size=50,
+    stride=10,
+    density_threshold=550,
+    region_threshold=0.8,
+    density_scale=(0,800)
+):
+    """
+    Spatial density QC per FOV with progress bar.
+    """
+    from skimage.transform import resize
+    import matplotlib.pyplot as plt
+
+    density_dir = dirs["QC_density"]
+
+    adata.obs['QC_filter_low_quality_region'] = False
+    low = set(adata.obs.index[adata.obs['QC_low_intensity_filter']])
+    fovs = sorted(adata.obs['fov'].unique())
+    region_map = {}
+
+    # Create density scale legend
+    create_density_scale_legend(density_dir, density_scale, density_threshold)
+
+    for fov in tqdm(fovs, desc="🔍 Density QC", unit="FOV"):
+        seg = adata.uns.get('spatial', {}).get(fov, {}).get('segmentation')
+        if seg is None:
+            logger.warning(f"Skipping {fov}, no segmentation.")
+            continue
+        filtered = [c for c in low if c.startswith(f"{fov}_")]
+        dm = compute_density_map(seg, filtered, window_size, stride)
+        
+        # Create figure for density map
+        fig, ax = plt.subplots(figsize=(6, 6))
+        im = ax.imshow(dm, cmap='hot', vmin=density_scale[0], vmax=density_scale[1])
+        ax.axis('off')
+        
+        # Save as PNG
+        png_path = os.path.join(density_dir, f"{fov}.png")
+        plt.savefig(png_path, dpi=200, bbox_inches='tight', format='png')
+        
+        # Save as SVG
+        svg_path = os.path.join(density_dir, f"{fov}.svg")
+        plt.savefig(svg_path, bbox_inches='tight', format='svg')
+        
+        plt.close()
+        # determine region cells
+        m = dm > density_threshold
+        if m.shape != seg.shape:
+            m = resize(m.astype(float), seg.shape) > 0.5
+        cnt, rg = defaultdict(int), defaultdict(int)
+        for y in range(seg.shape[0]):
+            for x in range(seg.shape[1]):
+                lab = seg[y, x]
+                if lab:
+                    cnt[lab] += 1
+                    if m[y, x]:
+                        rg[lab] += 1
+        keep = {f"{fov}_{lab}" for lab, c in rg.items() if c / cnt[lab] > region_threshold}
+        region_map[fov] = keep
+        mask = adata.obs['fov'] == fov
+        adata.obs.loc[mask, 'QC_filter_low_quality_region'] = adata.obs.loc[mask].index.isin(keep)
+    return adata, region_map
+
+
+
+
+
+def perform_dr_filtering(adata, radius, good_frac=0.75):
+    """
+    Generic DR-based neighborhood filtering.
+    """
+    # Find dimensionality reduction key, excluding spatial
+    dr_key = next((k for k in adata.obsm if k.startswith('X_') and k != 'X_spatial'), None)
+
+    if dr_key is None:
+        logger.info("No DR embedding found in .obsm (e.g., X_tsne, X_umap). Skipping DR filtering. Consider adding Dimension reduction coordinates")
+        adata.obs['QC_fraction_filtered'] = np.nan
+        adata.obs['QC_dr_based_filter'] = False
+        return adata
+
+    logger.info(f"🔧 Using DR embedding: {dr_key}")
+    pts = adata.obsm[dr_key]
+
+    if pts.shape[0] != adata.n_obs:
+        logger.error("❌ DR coordinate shape does not match number of cells in AnnData.")
+        raise ValueError(f"DR shape mismatch: DR coords have {pts.shape[0]}, adata has {adata.n_obs} cells")
+
+    logger.debug(f"DR filter on {pts.shape[0]} cells with radius={radius}")
+    good = adata.obs['filtering_status'] == 'Unfiltered'
+    tree_all = cKDTree(pts)
+    pts_good = pts[good.values]
+
+    if pts_good.size == 0:
+        logger.warning("⚠️ No 'Unfiltered' cells found for DR-based filtering.")
+        adata.obs['QC_fraction_filtered'] = 1.0
+        adata.obs['QC_dr_based_filter'] = False
+        return adata
+
+    tree_good = cKDTree(pts_good)
+
+    tot = np.array([len(n) for n in tree_all.query_ball_point(pts, r=radius)])
+    ok = np.array([len(n) for n in tree_good.query_ball_point(pts, r=radius)])
+
+    frac = np.zeros_like(tot, dtype=float)
+    valid = tot > 0
+    frac[valid] = ok[valid] / tot[valid]
+
+    adata.obs['QC_fraction_filtered'] = frac
+    flag = frac < good_frac
+    adata.obs['QC_dr_based_filter'] = flag
+
+    msg = int(flag.sum())
+    logger.info(f"🎯 DR filtering flagged {msg}/{len(frac)} cells (frac < {good_frac})")
+
+    idx = flag & (adata.obs['filtering_status'] == 'Unfiltered')
+    adata.obs.loc[idx, 'filtering_status'] = 'bad dr cluster'
+
+    return adata
+
+
+def generate_segmentation_images(adata, fovs, region_map,dirs):
+    import matplotlib.pyplot as plt
+
+    seg_dir = dirs["QC_segmentation"]
+    os.makedirs(seg_dir, exist_ok=True)
+
+    # Create segmentation filter legend
+    create_segmentation_filter_legend(seg_dir)
+
+    for fov in tqdm(fovs, desc="🎨 Segmentation QC", unit="FOV"):
+        seg = adata.uns.get('spatial', {}).get(fov, {}).get('segmentation')
+        if seg is None:
+            continue
+        H, W = seg.shape
+        low = set(adata.obs.query("fov == @fov and QC_low_intensity_filter").index)
+        reg = region_map.get(fov, set())
+        drf = set(adata.obs.query("fov == @fov and QC_dr_based_filter").index)
+
+        img = np.zeros((H, W, 3), dtype=np.uint8)
+        for y in range(H):
+            for x in range(W):
+                lab = seg[y, x]
+                if not lab:
+                    continue
+                key = f"{fov}_{lab}"
+                if key in low:
+                    img[y, x] = (255, 0, 0)  # Red
+                elif key in reg:
+                    img[y, x] = (0, 255, 0)  # Green
+                elif key in drf:
+                    img[y, x] = (255, 255, 0)  # Yellow
+                else:
+                    img[y, x] = (210, 210, 210)  # Light gray
+
+        # Save as PNG
+        png_path = os.path.join(seg_dir, f"{fov}.png")
+        plt.imsave(png_path, img)
+        
+        # Save as SVG (convert to matplotlib figure for SVG)
+        fig, ax = plt.subplots(figsize=(6, 6))
+        ax.imshow(img)
+        ax.axis('off')
+        svg_path = os.path.join(seg_dir, f"{fov}.svg")
+        plt.savefig(svg_path, bbox_inches='tight', format='svg')
+        plt.close()
+
+    logger.info("Segmentation overlays done")
+
+
+
+
+
+def create_storyboard(paths, out_path, cols=10):
+    """
+    Create a storyboard image from a list of image paths and save it to out_path.
+
+    Args:
+        paths (list): List of image file paths to include in the storyboard.
+        out_path (str): Output path for the storyboard PNG.
+        cols (int): Number of columns in the storyboard grid.
+    """
+    if not paths:
+        return
+
+    imgs = [Image.open(p) for p in paths]
+    w, h = min(img.width for img in imgs), min(img.height for img in imgs)
+
+    board = Image.new('RGB', (cols * w, ((len(imgs) + cols - 1) // cols) * h), (255, 255, 255))
+    for i, img in enumerate(imgs):
+        board.paste(img.resize((w, h)), ((i % cols) * w, (i // cols) * h))
+
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    board.save(out_path)
+
+
+
+def generate_storyboards(dirs, fovs):
+    """
+    Generate storyboard images for segmentation and density QC maps.
+
+    Args:
+        dirs (dict): Dictionary containing paths including:
+            - dirs["QC_density"]
+            - dirs["QC_segmentation"]
+            - dirs["QC_storyboards"]
+        fovs (list): List of FOV names.
+    """
+    seg_dir = dirs["QC_segmentation"]
+    dens_dir = dirs["QC_density"]
+    sb_dir = dirs["QC_storyboards"]
+
+    seg_paths = [os.path.join(seg_dir, f"{f}.png") for f in fovs]
+    dens_paths = [os.path.join(dens_dir, f"{f}.png") for f in fovs]
+
+    seg_out = os.path.join(sb_dir, "segmentation_storyboard.png")
+    dens_out = os.path.join(sb_dir, "density_storyboard.png")
+
+    if seg_paths:
+        create_storyboard(seg_paths, seg_out)
+    if dens_paths:
+        create_storyboard(dens_paths, dens_out)
+
+    # Copy legend files to storyboard folder for user convenience
+    
+    # Copy density scale legend
+    density_legend_png = os.path.join(dens_dir, "density_scale_legend.png")
+    density_legend_svg = os.path.join(dens_dir, "density_scale_legend.svg")
+    if os.path.exists(density_legend_png):
+        shutil.copy2(density_legend_png, os.path.join(sb_dir, "density_scale_legend.png"))
+    if os.path.exists(density_legend_svg):
+        shutil.copy2(density_legend_svg, os.path.join(sb_dir, "density_scale_legend.svg"))
+    
+    # Copy segmentation filter legend
+    seg_legend_png = os.path.join(seg_dir, "segmentation_filter_legend.png")
+    seg_legend_svg = os.path.join(seg_dir, "segmentation_filter_legend.svg")
+    if os.path.exists(seg_legend_png):
+        shutil.copy2(seg_legend_png, os.path.join(sb_dir, "segmentation_filter_legend.png"))
+    if os.path.exists(seg_legend_svg):
+        shutil.copy2(seg_legend_svg, os.path.join(sb_dir, "segmentation_filter_legend.svg"))
+    
+    logger.info("✅ Legend files copied to storyboard folder for user convenience")
+
+
+def generate_dr_plot(adata, dirs):
+    """
+    Generate a scatter plot of cells colored by filtering status in DR space.
+
+    Args:
+        adata (AnnData): The annotated data matrix.
+        dirs (dict): Dictionary containing paths, including dirs["QC"].
+    """
+    # Look for any DR embedding other than X_spatial
+    dr_key = next((k for k in adata.obsm if k.startswith('X_') and k != 'X_spatial'), None)
+
+    if dr_key is None:
+        logger.info("No DR embedding found in .obsm. Skipping DR plot.")
+        return
+
+    coords = adata.obsm[dr_key]
+    if coords.shape[0] != adata.n_obs:
+        logger.error(f"❌ DR coords shape mismatch: {coords.shape[0]} rows vs {adata.n_obs} obs.")
+        return
+
+    if 'filtering_status' not in adata.obs.columns:
+        logger.warning("⚠️ 'filtering_status' not found in obs. Cannot generate DR plot.")
+        return
+
+    status = adata.obs['filtering_status'].values
+    colors = np.full(len(coords), 'lightgray', dtype=object)
+    colors[status == 'low intensity cell'] = 'red'
+    colors[status == 'low quality region'] = 'green'
+    colors[status == 'bad dr cluster'] = 'yellow'
+
+    fig, ax = plt.subplots(figsize=(6, 5))
+    ax.scatter(coords[:, 0], coords[:, 1], c=colors, s=1, alpha=0.6)
+
+    ax.set_title(f"Filtering Results after Dimension Reduction ({dr_key})")
+    ax.set_xlabel(f"{dr_key} 1")
+    ax.set_ylabel(f"{dr_key} 2")
+
+    legend_handles = [
+        plt.Line2D([], [], marker='o', color='w', markerfacecolor=color, label=label, markersize=10)
+        for label, color in [
+            ('Low Intensity Cell', 'red'),
+            ('Low Quality Region', 'green'),
+            ('Bad DR Cluster', 'yellow'),
+            ('Unfiltered', 'lightgray')
+        ]
+    ]
+    ax.legend(
+        handles=legend_handles,
+        title='Filter',
+        loc='upper right',
+        markerscale=0.5,
+        fontsize='x-small',
+        title_fontsize='small'
+    )
+
+    # Save as PNG
+    out_path_png = os.path.join(dirs["QC_filtering"], '3_dr_qc.png')
+    plt.savefig(out_path_png, dpi=200, bbox_inches='tight', format='png')
+    
+    # Save as SVG
+    out_path_svg = os.path.join(dirs["QC_filtering"], '3_dr_qc.svg')
+    plt.savefig(out_path_svg, bbox_inches='tight', format='svg')
+    
+    plt.close()
+    logger.info(f"🖼️ DR QC plot saved to: {out_path_png}, {out_path_svg}")
+
+
+def generate_summary_tables(adata, dirs):
+    """
+    Generate summary CSVs of filtering results at overall and per-FOV level.
+
+    Args:
+        adata (AnnData): The annotated data matrix.
+        dirs (dict): Dictionary with paths, must include dirs["QC"].
+    """
+
+    if 'filtering_status' not in adata.obs.columns:
+        logger.warning("⚠️ 'filtering_status' missing in AnnData. Skipping summary table generation.")
+        return
+
+    status = adata.obs['filtering_status']
+    total = len(status)
+
+    steps = [
+        ('Total', None),
+        ('Low Intensity', 'low intensity cell'),
+        ('Low Quality', 'low quality region'),
+        ('Bad DR', 'bad dr cluster')
+    ]
+
+    rows = [
+        {
+            'Filter Step': name,
+            'Count': (status == val).sum() if val else total,
+            'Percent': ((status == val).sum() / total * 100) if val else 100.0
+        }
+        for name, val in steps
+    ]
+
+    overall_path = os.path.join(dirs["QC_filtering"], '5_overall_stats.csv')
+    pd.DataFrame(rows).to_csv(overall_path, index=False)
+    logger.info(f"📄 Wrote overall filtering stats to: {overall_path}")
+
+    # Per-FOV stats
+    if 'fov' not in adata.obs.columns:
+        logger.warning("⚠️ 'fov' not found in obs. Skipping per-FOV stats.")
+        return
+
+    fov_rows = []
+    for fov in adata.obs['fov'].unique():
+        sub = status[adata.obs['fov'] == fov]
+        row = {'FOV': fov}
+        for name, val in steps:
+            row[name] = (sub == val).sum() if val else len(sub)
+        fov_rows.append(row)
+
+    per_fov_path = os.path.join(dirs["QC_filtering"], '6_per_fov_stats.csv')
+    pd.DataFrame(fov_rows).to_csv(per_fov_path, index=False)
+    logger.info(f"📄 Wrote per-FOV filtering stats to: {per_fov_path}")
+
+def print_success_guide(dirs):
+    """
+    Print user-friendly summary of QC outputs using standard dirs structure.
+    """
+    print(f"🎉 QC pipeline completed successfully! Here are your visual and numeric outputs: {dirs['QC_filtering']}")
+
+    #print(f" - Including Segmentation overlays:  {dirs['QC_segmentation']}")
+    #print(f" - Storyboards:            {dirs['QC_storyboards']}")
+
+    #dr_plot = os.path.join(dirs["QC_filtering"], 'dr_qc.png')
+    #if os.path.exists(dr_plot):
+    #    print(f" - Dimension Reduction QC plot:      {dr_plot}")
+
+    #overall_stats = os.path.join(dirs["QC_filtering"], 'overall_stats.csv')
+    #if os.path.exists(overall_stats):
+    #    print(f" - Overall filtering stats CSV:      {overall_stats}")
+
+    #per_fov_stats = os.path.join(dirs["QC_filtering"], 'per_fov_stats.csv')
+    #if os.path.exists(per_fov_stats):
+    #    print(f" - Per-FOV filtering stats CSV:      {per_fov_stats}")
+
+
+
+def plot_intensity_distribution(adata, dirs, low_intensity_threshold):
+    """
+    Plot total intensity distribution across all cells, with a line at the filtering threshold.
+    """
+    data = adata.obs["total_intensity"]
+    fig, axes = plt.subplots(2, 1, figsize=(10, 8))
+
+    # Zoomed view (0–45)
+    bins_a = np.arange(0, 45 + 0.2, 0.2)
+    axes[0].hist(data, bins=bins_a, color='skyblue', edgecolor='black')
+    axes[0].axvline(low_intensity_threshold, color='red', linestyle='--', linewidth=2)
+    axes[0].text(low_intensity_threshold + 0.5, axes[0].get_ylim()[1] * 0.9,
+                 f"--low_intensity_threshold = {low_intensity_threshold}",
+                 color='red', va='top', ha='left', fontsize=10)
+    axes[0].set_title("Summed Intensity (0–45)")
+
+    # Full range view
+    axes[1].hist(data, bins=100, color='lightgray', edgecolor='black')
+    axes[1].axvline(low_intensity_threshold, color='red', linestyle='--', linewidth=2)
+    axes[1].text(low_intensity_threshold + (data.max() * 0.01), axes[1].get_ylim()[1] * 0.9,
+                 f"--low_intensity_threshold = {low_intensity_threshold}",
+                 color='red', va='top', ha='left', fontsize=10)
+    axes[1].set_title("Summed Intensity (Full Range)")
+
+    plt.tight_layout()
+    
+    # Save as PNG
+    out_path_png = os.path.join(dirs["QC_filtering"], "1_total_intensity_distribution.png")
+    plt.savefig(out_path_png, dpi=150, format='png')
+    
+    # Save as SVG
+    out_path_svg = os.path.join(dirs["QC_filtering"], "1_total_intensity_distribution.svg")
+    plt.savefig(out_path_svg, format='svg')
+    
+    plt.close()
+
+def log_column_stats(matrix: np.ndarray, var_names: list, logger):
+    """
+    Logs basic stats per marker from a NumPy matrix: min, max, mean, std, and nonzero fraction.
+    """
+    n_cols = matrix.shape[1]
+    for i in range(n_cols):
+        col = matrix[:, i]
+        name = var_names[i]
+        nz_frac = np.count_nonzero(col) / len(col)
+        logger.debug(
+            f"[{name}] min={col.min():.3g}, max={col.max():.3g}, mean={col.mean():.3g}, "
+            f"std={col.std():.3g}, nonzero_frac={nz_frac:.2%}"
+        )
+
+
+from pathlib import Path
+from typing import Optional, Sequence
+import numpy as np
+import matplotlib.pyplot as plt
+import logging
+
+logger = logging.getLogger(__name__)
+
+def qc_plot_normalization_comparison_from_X_png(
+    adata,
+    dirs: dict,
+    args,
+    raw_layer: str = "sum_unhuddle_denoised",
+    area_key: str = "Area",
+    point_size: float = 1.0,
+    alpha: float = 0.3,
+    summary_dpi: int = 200,
+    per_marker_dpi: int = 150
+) -> str:
+    """
+    QC plots comparing normalization methods:
+    1) Summary: scatter of (Area vs Raw), (Area vs Raw/SensorSum), (Area vs Raw/Area), (Area vs Scaled)
+    2) Per-marker grid: same 4-panel layout for each marker.
+    X-axes are aligned (Area); each Y-axis is free to autoscale.
+    """
+    adata = adata[adata.obs['QC_final_keep']].copy()
+
+    # prepare output folder
+    out_dir = dirs["QC_plot"]
+
+    # pick raw layer or fallback
+    if raw_layer not in adata.layers:
+        fb = "sum_unhuddle"
+        if fb in adata.layers:
+            raw_layer = fb
+            logger.info(f"Using fallback raw_layer='{fb}'")
+        else:
+            msg = f"Skipped QC: neither '{raw_layer}' nor fallback found."
+            logger.warning(msg)
+            return f"⚠️ {msg}"
+
+    raw_mat = adata.layers[raw_layer]
+    scaled_mat = adata.X
+    log_column_stats(adata.X, adata.var_names, logger)
+
+    markers = list(adata.var_names)
+    idx = [markers.index(m) for m in markers]
+
+    # sensor markers from args
+    sensor_markers = args.normalization_markers
+    valid_sensor_markers = [m for m in sensor_markers if m in markers]
+
+    if not valid_sensor_markers:
+        logger.info(
+            "No valid sensor markers provided; falling back to sum of all markers for Raw/SensorSum panel.")
+        sensor_idx = list(range(len(markers)))  # use all markers
+    else:
+        sensor_idx = [markers.index(m) for m in valid_sensor_markers]
+
+    sensor_sum = np.sum(raw_mat[:, sensor_idx], axis=1)
+    sensor_sum_mask = np.ma.masked_equal(sensor_sum, 0)
+
+    # Area normalization
+    if area_key not in adata.obs:
+        msg = f"Area key '{area_key}' not found in adata.obs."
+        logger.warning(msg)
+        return f"⚠️ {msg}"
+    area = adata.obs[area_key].values
+    area_mask = np.ma.masked_equal(area, 0)
+
+    # compute data for summary
+    raw_sel = raw_mat[:, idx]  # (n_cells, n_markers)
+    raw_sensor_norm = raw_sel / sensor_sum_mask[:, None]  # Raw / SensorSum
+    raw_area_norm = raw_sel / area_mask[:, None]          # Raw / Area
+    scaled_sel = scaled_mat[:, idx]
+    n_markers = raw_sel.shape[1]
+    area_rep = np.repeat(area_mask, n_markers)  # length = n_cells * n_markers
+
+    # 1) Summary figure (4 panels)
+    scaled_panel_title = f"Scaled ({args.normalization}-normalization)"
+    fig, axs = plt.subplots(1, 4, figsize=(20, 5), sharex=True, sharey=False)
+
+    # Define robust percentile for clipping extreme outliers
+    y_percentile = 99.9
+
+    # Panel 1: Raw
+    raw_flat = raw_sel.flatten()
+    raw_ymax = np.percentile(raw_flat, y_percentile)
+    axs[0].scatter(area_rep, np.clip(raw_flat, None, raw_ymax), s=point_size, alpha=alpha)
+    axs[0].set_title("All markers — Raw")
+    axs[0].set_xlabel("Area")
+    axs[0].set_ylabel("Intensity")
+    axs[0].margins(y=0.05)
+
+    # Panel 2: Raw / SensorSum
+    sensor_flat = raw_sensor_norm.flatten()
+    sensor_flat_compressed = sensor_flat.compressed() if isinstance(sensor_flat, np.ma.MaskedArray) else sensor_flat
+    sensor_ymax = np.percentile(sensor_flat_compressed, y_percentile)
+    axs[1].scatter(area_rep, np.clip(sensor_flat, None, sensor_ymax), s=point_size, alpha=alpha)
+    axs[1].set_title("All markers — Raw / SensorSum")
+    axs[1].set_xlabel("Area")
+    axs[1].margins(y=0.05)
+
+    # Panel 3: Raw / Area
+    area_flat = raw_area_norm.flatten()
+    area_flat_compressed = area_flat.compressed() if isinstance(area_flat, np.ma.MaskedArray) else area_flat
+    area_ymax = np.percentile(area_flat_compressed, y_percentile)
+    axs[2].scatter(area_rep, np.clip(area_flat, None, area_ymax), s=point_size, alpha=alpha)
+    axs[2].set_title("All markers — Raw / Area")
+    axs[2].set_xlabel("Area")
+    axs[2].margins(y=0.05)
+
+    # Panel 4: Scaled (fixed range [0, 1])
+    scaled_flat = scaled_sel.flatten()
+    axs[3].scatter(area_rep, scaled_flat, s=point_size, alpha=alpha)
+    axs[3].set_title(f"All markers — {scaled_panel_title}")
+    axs[3].set_xlabel("Area")
+    axs[3].margins(y=0.05)
+
+    fig.suptitle("Normalization Summary (All Markers)")
+    fig.tight_layout(rect=[0, 0, 1, 0.95])
+    fig.savefig(os.path.join(out_dir, "norm_comparison_summary.png"), dpi=summary_dpi)
+    plt.close(fig)
+
+    # 2) Per-marker storyboard grid (4 panels per marker)
+    rows = len(markers)
+    cols = 4
+    fig, axes = plt.subplots(rows, cols, figsize=(5 * cols, 3 * rows), sharex="row", sharey=False)
+    if rows == 1:
+        axes = np.expand_dims(axes, 0)
+
+    for i, m in enumerate(markers):
+        for j, mat in enumerate((raw_sel, raw_sensor_norm, raw_area_norm, scaled_sel)):
+            ax = axes[i, j]
+            col_vals = mat[:, i]
+
+            if j < 3:
+                col_vals_flat = col_vals.compressed() if isinstance(col_vals, np.ma.MaskedArray) else col_vals
+                y_max = np.percentile(col_vals_flat, y_percentile)
+                ax.scatter(area_mask, np.clip(col_vals, None, y_max), s=point_size * 1.5, alpha=alpha)
+                ax.margins(y=0.05)
+            else:
+                ax.scatter(area_mask, col_vals, s=point_size * 1.5, alpha=alpha)
+                ax.margins(y=0.05)
+
+            if i == 0:
+                title = ("Raw", "Raw / SensorSum", "Raw / Area", scaled_panel_title)[j]
+                ax.set_title(title)
+            if j == 0:
+                ax.set_ylabel(m)
+            if i == rows - 1:
+                ax.set_xlabel("Area")
+
+    fig.tight_layout()
+    fig.savefig(os.path.join(out_dir,"normalization_per_marker.png"), dpi=per_marker_dpi)
+    plt.close(fig)
+
+    logger.info(f"✅ QC PNGs saved to {out_dir}")
+    return f"✅ PNG normalization plots saved to {out_dir}"
+
+def extend_dirs_with_qc(dirs):
+    """
+    Extend an existing dirs dictionary with standardized QC subfolders.
+    Assumes dirs["QC"] already exists.
+    """
+
+    dirs["QC_filtering"] = os.path.join(dirs["QC"], "filtering")
+    os.makedirs(dirs["QC_filtering"], exist_ok=True)
+    dirs["QC_density"] = os.path.join(dirs["QC"], "filtering","2_density_maps")
+    dirs["QC_segmentation"] = os.path.join(dirs["QC"], "filtering","4_spatial_filter")
+    dirs["QC_storyboards"] = os.path.join(dirs["QC"], "filtering","storyboards")
+    for key in ["QC_density", "QC_segmentation", "QC_storyboards"]:
+        os.makedirs(dirs[key], exist_ok=True)
+
+    return dirs
+
+
+def run_qc_from_memory(args, adata, dirs):
+    dirs = extend_dirs_with_qc(dirs)
+    logger.debug('🚀 Running QC pipeline')
+    logger.info(f'🔧 Low-intensity threshold = {args.low_intensity_threshold}')
+    logger.info(f'🔧 Density window = {args.qc_window_size}, stride = {args.qc_stride}')
+    logger.info(f'🔧 Density threshold = {args.qc_density_threshold}, region threshold = {args.qc_region_threshold}')
+    logger.info(f'🔧 DR radius = {args.radius_DRfilter}')
+
+    # ── 1. Intensity Filter ───────────────────────────────────────────────────────
+    if 'sum_unhuddle' not in adata.layers:
+        logger.error("❌ Missing 'sum_unhuddle' layer in AnnData. Cannot compute total intensity.")
+        raise ValueError("Missing layer: 'sum_unhuddle'")
+
+    tot = adata.layers['sum_unhuddle'].sum(axis=1)
+    adata.obs['total_intensity'] = tot
+    plot_intensity_distribution(adata, dirs, args.low_intensity_threshold)
+    adata.obs['QC_low_intensity_filter'] = tot < args.low_intensity_threshold
+    low_count = int(adata.obs['QC_low_intensity_filter'].sum())
+
+    # ── 2. Density-Based Region Filter ────────────────────────────────────────────
+    logger.debug('🔍 Density QC')
+    adata, region_map = perform_density_filtering(
+        adata, dirs,
+        window_size=args.qc_window_size,
+        stride=args.qc_stride,
+        density_threshold=args.qc_density_threshold,
+        region_threshold=args.qc_region_threshold,
+        density_scale=tuple(args.qc_plot_density_scale)
+    )
+    region_count = int(adata.obs['QC_filter_low_quality_region'].sum())
+    logger.info(f'🔧 Post-density filter counts: low_intensity={low_count}, low_quality_region={region_count}')
+
+    # ── 3. Init Filtering Status ──────────────────────────────────────────────────
+    adata.obs['filtering_status'] = 'Unfiltered'
+    adata.obs.loc[adata.obs['QC_filter_low_quality_region'], 'filtering_status'] = 'low quality region'
+    adata.obs.loc[adata.obs['QC_low_intensity_filter'], 'filtering_status'] = 'low intensity cell'
+
+    # ── 4. DR-Based Filter ────────────────────────────────────────────────────────
+    logger.info('🎲 Dimension Reduction (DR) based filtering')
+    adata = perform_dr_filtering(adata, args.radius_DRfilter)
+    if 'QC_dr_based_filter' in adata.obs:
+        dr_bad = int(adata.obs['QC_dr_based_filter'].sum())
+        logger.info(f'🔧 Post-DR filter count: bad_dr_cluster = {dr_bad}')
+    else:
+        logger.info("DR-based filtering skipped or failed — no 'QC_dr_based_filter' in obs. Consider adding dimension reduction coordinates")
+
+    # ── 5. Segmentation Overlays ──────────────────────────────────────────────────
+    logger.info('🎨 Segmentation overlays')
+    generate_segmentation_images(adata, list(region_map), region_map,dirs)
+
+    # ── 6. Storyboards ────────────────────────────────────────────────────────────
+    logger.info('📚 Storyboards')
+    generate_storyboards(dirs, list(region_map))
+
+    # ── 7. DR Plot ────────────────────────────────────────────────────────────────
+    logger.info('📈 Filtering results in Dimension Reduction plot')
+    generate_dr_plot(adata, dirs)
+
+    # ── 8. Summary Tables ─────────────────────────────────────────────────────────
+    logger.info('📊 Summaries')
+    generate_summary_tables(adata, dirs)
+
+    # ── 9. Final Keep Flag + Save ─────────────────────────────────────────────────
+    logger.info('💾 Save flagged full AnnData (no cells removed)')
+    keep = ~(adata.obs.get('QC_low_intensity_filter', False) | adata.obs.get('QC_filter_low_quality_region', False))
+    if 'QC_dr_based_filter' in adata.obs:
+        keep &= ~adata.obs['QC_dr_based_filter']
+    adata.obs['QC_final_keep'] = keep.astype(bool)
+    kept_count = int(keep.sum())
+    logger.info(f'🔧 Final cells flagged: retained = {kept_count} / {adata.n_obs}')
+    # ── 10 Cohort-Level Normalization QC ─────────────────────────────────────────
+    logger.info('📊 Cohort-level normalization QC')
+    qc_plot_normalization_comparison_from_X_png(
+        adata=adata,
+        dirs=dirs,
+        args=args
+    )
+
+
+    out_path = os.path.join(dirs['adata'], 'adata1.h5ad')
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+    adata.write_h5ad(out_path)
+    logger.info(f'💾 Saved full QC-flagged AnnData: {out_path}')
+    print(f'\n✅  Saved full QC-flagged AnnData: {out_path}')
+    print(f"🎉 QC filtering completed successfully! Here are your visual and numeric outputs: {dirs['QC_filtering']}\n")
+
+    # ── 10. Final Print Summary ───────────────────────────────────────────────────
+    del adata
+    #print_success_guide(dirs)
+
+
+def create_density_scale_legend(density_dir, density_scale=(0, 800), density_threshold=550):
+    """
+    Create a simple density scale legend showing the color mapping and threshold.
+    
+    Args:
+        density_dir (str): Directory to save the legend files
+        density_scale (tuple): (min, max) values for the density scale
+        density_threshold (float): Threshold value for filtering
+    """
+    import matplotlib.pyplot as plt
+    
+    # Create figure with just the colorbar
+    fig, ax = plt.subplots(figsize=(1, 4))
+    
+    # Create a gradient for the colorbar (inverted hot colormap)
+    gradient = np.linspace(density_scale[0], density_scale[1], 256).reshape(-1, 1)
+    
+    # Display the gradient as an image with inverted hot colormap
+    im = ax.imshow(gradient, cmap='hot_r', aspect='auto', 
+                   extent=[0, 1, density_scale[0], density_scale[1]])
+    
+    # Add threshold line and annotation
+    if density_threshold > density_scale[0] and density_threshold < density_scale[1]:
+        ax.axhline(y=density_threshold, color='white', linestyle='--', linewidth=2)
+        ax.text(0.5, density_threshold + (density_scale[1] - density_scale[0]) * 0.02, 
+                f'Threshold: {density_threshold}', 
+                ha='center', va='bottom', color='white', fontsize=8, 
+                bbox=dict(boxstyle='round,pad=0.2', facecolor='black', alpha=0.7))
+    
+    # Set title
+    ax.set_title('Density Scale', fontsize=12, pad=20)
+    
+    # Remove x-axis ticks and labels
+    ax.set_xticks([])
+    ax.set_xlabel('')
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save as PNG
+    png_path = os.path.join(density_dir, "density_scale_legend.png")
+    plt.savefig(png_path, dpi=300, bbox_inches='tight', format='png')
+    
+    # Save as SVG
+    svg_path = os.path.join(density_dir, "density_scale_legend.svg")
+    plt.savefig(svg_path, bbox_inches='tight', format='svg')
+    
+    plt.close()
+    
+    logger.info(f"✅ Density scale legend saved: {png_path}, {svg_path}")
+
+
+def create_segmentation_filter_legend(seg_dir):
+    """
+    Create a segmentation filter legend showing which colors correspond to which filter types.
+    
+    Args:
+        seg_dir (str): Directory to save the legend files
+    """
+    import matplotlib.pyplot as plt
+    import matplotlib.patches as patches
+    
+    # Define colors and labels
+    colors = {
+        'Low Intensity Cell': (255, 0, 0),      # Red
+        'Low Quality Region': (0, 255, 0),      # Green  
+        'Bad DR Cluster': (255, 255, 0),        # Yellow
+        'Unfiltered': (210, 210, 210)           # Light gray
+    }
+    
+    # Create figure
+    fig, ax = plt.subplots(figsize=(4, 3))
+    
+    # Create legend patches
+    legend_elements = []
+    for label, color in colors.items():
+        # Convert RGB to matplotlib format (0-1 range)
+        color_norm = tuple(c/255 for c in color)
+        patch = patches.Patch(color=color_norm, label=label)
+        legend_elements.append(patch)
+    
+    # Add legend
+    ax.legend(handles=legend_elements, loc='center', fontsize=10)
+    ax.set_title('Segmentation Filter Legend', fontsize=12, pad=20)
+    ax.axis('off')
+    
+    # Adjust layout
+    plt.tight_layout()
+    
+    # Save as PNG
+    png_path = os.path.join(seg_dir, "segmentation_filter_legend.png")
+    plt.savefig(png_path, dpi=300, bbox_inches='tight', format='png')
+    
+    # Save as SVG
+    svg_path = os.path.join(seg_dir, "segmentation_filter_legend.svg")
+    plt.savefig(svg_path, bbox_inches='tight', format='svg')
+    
+    plt.close()
+    
+    logger.info(f"✅ Segmentation filter legend saved: {png_path}, {svg_path}")
+
+
+
+

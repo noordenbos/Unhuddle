@@ -2,4 +2,14 @@
 .idea/
 __pycache__/
 *.egg-info/
-.DS_Store
+.DS_Store/
+archive/
+results/
+demodata/**
+!demodata/**/*.ome.tiff
+!demodata/**/cell_mask.tiff
+temp/
+
+# Virtual environments
+.venv/
+.venv_penguin/

@@ -9,7 +9,6 @@ readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.8"
 
-# Core dependencies
 dependencies = [
   "numpy",
   "pandas",
@@ -20,11 +19,14 @@ dependencies = [
   "selenium",
   "requests",
   "anndata",
-  "matplotlib"
+  "matplotlib",
+  "scikit-learn",
+  "seaborn",
+  "statsmodels"
 ]
 
 [build-system]
-requires = ["setuptools>=61.0"]
+requires = ["setuptools>=61.0", "wheel", "cython", "numpy"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
@@ -35,8 +37,9 @@ where = ["src"]
 
 [project.scripts]
 unhuddle = "unhuddle.cli:main"
+unhuddle-denoise = "unhuddle.cli:main"
+penguin-preprocess = "penguin_preprocess.app:main"
 
-# Optional: Dev dependencies (install via `pip install .[dev]`)
 [project.optional-dependencies]
 dev = [
   "pytest",
@@ -44,8 +47,10 @@ dev = [
   "flake8",
   "isort"
 ]
+fitsne = ["fitsne>=1.0.0", "cython"]
 
-# Optional formatting/linting config
+
+
 [tool.black]
 line-length = 100
 target-version = ["py38"]
