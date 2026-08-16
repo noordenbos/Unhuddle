@@ -1,0 +1,33 @@
+cff-version: 1.2.0
+message: "If you use UNHUDDLE, please cite it as below."
+title: "UNHUDDLE: Uncovering Neighborhood Heterogeneity Using Deterministic Normalization and Local Equilibrium"
+version: "1.0.0"
+date-released: "2026-08-16"
+license: MIT
+type: software
+repository-code: "https://github.com/noordenbos/Unhuddle"
+url: "https://github.com/noordenbos/Unhuddle"
+authors:
+  - family-names: Noordenbos
+    given-names: Troy
+    email: tnoorden@stanford.edu
+    affiliation: "Stanford University School of Medicine"
+keywords:
+  - multiplex proteomics
+  - spatial proteomics
+  - imaging mass cytometry
+  - signal deconvolution
+  - cell segmentation
+  - AnnData
+  - denoising
+abstract: >-
+  UNHUDDLE reallocates shared border-pixel signal among neighboring cells in
+  densely packed multiplex spatial proteomics images, applies optional
+  cohort-level denoising, normalizes intensities, and exports Scanpy-compatible
+  AnnData objects with quality-control outputs.
+identifiers:
+  - type: url
+    value: "https://github.com/noordenbos/Unhuddle/releases/tag/v1.0.0"
+    description: GitHub release v1.0.0
+# After Zenodo mints the DOI, add:
+# doi: 10.5281/zenodo.XXXXXXX

@@ -1,0 +1,29 @@
+{
+  "title": "UNHUDDLE: Uncovering Neighborhood Heterogeneity Using Deterministic Normalization and Local Equilibrium",
+  "version": "1.0.0",
+  "upload_type": "software",
+  "license": "mit",
+  "access_right": "open",
+  "creators": [
+    {
+      "name": "Noordenbos, Troy",
+      "affiliation": "Stanford University School of Medicine"
+    }
+  ],
+  "keywords": [
+    "multiplex proteomics",
+    "spatial proteomics",
+    "imaging mass cytometry",
+    "signal deconvolution",
+    "AnnData",
+    "Python"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/noordenbos/Unhuddle",
+      "relation": "isSupplementTo",
+      "resource_type": "software",
+      "scheme": "url"
+    }
+  ]
+}

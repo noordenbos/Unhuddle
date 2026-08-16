@@ -1164,10 +1164,27 @@ For detailed documentation, see the [Benchmark API README](unhuddle_benchmark_ap
 ---
 
 ## 📊 Packaging
-UNHUDDLE is installable via `pip install unhuddle`.
+Install from a clone (current public path):
+
+```bash
+pip install -e .
+```
+
+PyPI `pip install unhuddle` will follow once that distribution is published. The CLI is `unhuddle` (`unhuddle-denoise` remains as a compatibility alias).
+
+Release **v1.0.0**: [https://github.com/noordenbos/Unhuddle/releases/tag/v1.0.0](https://github.com/noordenbos/Unhuddle/releases/tag/v1.0.0)
 
 ## 📣 Citation & License
-This tool is part of an ongoing research pipeline for high-dimensional tissue profiling originating from the Alizadeh laboratory at Stanford School of Medicine.
-Please cite appropriately once a manuscript is available. Open-source license to be defined.
+
+UNHUDDLE is released under the [MIT License](LICENSE). Please cite the software via [`CITATION.cff`](CITATION.cff). After Zenodo archives v1.0.0, replace the GitHub URL below with the version DOI.
+
+```
+Noordenbos, T. (2026). UNHUDDLE (v1.0.0). GitHub.
+https://github.com/noordenbos/Unhuddle/releases/tag/v1.0.0
+```
+
+A short software paper for the Journal of Open Source Software is in [`paper/paper.md`](paper/paper.md). Archival and registry steps are in [`RELEASE.md`](RELEASE.md).
+
+This tool originated in high-dimensional tissue profiling work in the Alizadeh laboratory at Stanford School of Medicine.
 
 

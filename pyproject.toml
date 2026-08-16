@@ -1,6 +1,6 @@
 [project]
 name = "unhuddle"
-version = "0.1.0"
+version = "1.0.0"
 description = "Highly multiplex proteomics: Signal deconvolution and normalization in densely packed tissue using UNHUDDLE."
 authors = [
   { name = "Troy Noordenbos", email = "tnoorden@stanford.edu" }
